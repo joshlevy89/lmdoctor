@@ -28,6 +28,7 @@ class LieDetector(Detector):
         layer_avg = layer_avg.detach().cpu().numpy()
         layer_avg = layer_avg.reshape(1, -1)
         return layer_avg
+    
         
 
 def prepare_statement_pairs(tokenizer, user_tag, assistant_tag):
