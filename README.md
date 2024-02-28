@@ -1,13 +1,13 @@
 # lmdoctor
 pip pkg for extracting and controlling concepts within language models as they generate text
 
-source code: https://github.com/joshlevy89/lmdoctor
+built on 🤗 transformers
 
 it reads the model's activations during inference to determine how certain concepts (e.g. honesty) are representated, and how to control them.
 
 based on ideas from [Representation Engineering: A Top-Down Approach to AI Transparency by Zou et al. 2023](https://arxiv.org/pdf/2310.01405.pdf). their original code [here](https://github.com/andyzoujm/representation-engineering).
 
-built on :hugs: transformers
+for the latest source code or to report issues, please visit the [project repository](https://github.com/joshlevy89/lmdoctor).
 
 ## Example
 
