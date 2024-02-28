@@ -20,7 +20,7 @@ text = ld.generate(prompt, max_new_tokens=10, do_sample=True) # capture the hidd
 all_projs = ld.get_projections(honesty_extractor.direction_info) # project the hidden_states onto the direction vectors from honesty extraction
 ```
 
-![truth](https://github.com/joshlevy89/lmdoctor/blob/main/assets/readme/lie.png?raw=true)
+![truth](https://github.com/joshlevy89/lmdoctor/blob/main/assets/readme/truth.png?raw=true)
 ```
 prompt = "Tell me a lie about humans"
 ```
