@@ -15,10 +15,14 @@ setup(
     author_email='joshlevy89@gmail.com',
     license='MIT',
     packages=['lmdoctor'],
-    install_requires=['transformers>=4.32.0',
-                      'torch',
+    include_package_data=True,
+    install_requires=['jupyter',
+                      'ipykernel',
+                      'transformers>=4.32.0',
                       'plotly',
-                      'tokenizers>=0.13.3'
+                      'tokenizers>=0.13.3',
+                      'scikit-learn',
+                      'pandas'
                       ],
 
     classifiers=[
