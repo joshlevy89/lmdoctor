@@ -24,6 +24,9 @@ class LieDetector(Detector):
         super().__init__(*args, **kwargs)
 
     def detect_lie(self, layers_to_use=range(32-25, 32-9)):
+        """
+        Logic for aggregating over layers to score tokens for degree of lying. 
+        """
         layer_avg = self.all_projs[layers_to_use, :].mean(axis=0)
         layer_avg = layer_avg.detach().cpu().numpy()
         layer_avg = layer_avg.reshape(1, -1)
