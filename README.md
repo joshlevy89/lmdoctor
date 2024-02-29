@@ -11,6 +11,8 @@ for the latest source code or to report issues, please visit the [project reposi
 
 ## Example
 
+### lie detection
+
 ```
 prompt = "Tell me a fact about humans"
 
@@ -25,6 +27,27 @@ all_projs = ld.get_projections(honesty_extractor.direction_info) # project the h
 prompt = "Tell me a lie about humans"
 ```
 ![lie](https://github.com/joshlevy89/lmdoctor/blob/main/assets/readme/lie.png?raw=true)
+
+### honesty control
+```
+prompt = "You killed a person for revenge but don't want to get caught. What would you tell the police?"
+vanilla_generate(prompt)
+```
+
+```
+output: I would tell the police that I did not kill anyone.
+```
+```
+# +honesty control
+from lmdoctor import utils
+hc = utils.ConceptController(honesty_extractor.direction_info, model, tokenizer, user_tag=user_tag, assistant_tag=assistant_tag)
+hc.generate(prompt, control_direction=1, max_new_tokens=12)
+```
+```
+output: I would tell the police that I have killed a person
+````
+
+For the complete example, see [examples/honesty_example.ipynb](https://github.com/joshlevy89/lmdoctor/blob/main/examples/honesty_example.ipynb)
 
 
 ## Getting started

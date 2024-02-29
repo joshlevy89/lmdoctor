@@ -4,6 +4,10 @@ from sklearn.decomposition import PCA
 import numpy as np
 
 class Detector:
+    """
+    Wraps model in order to capture hidden_states during generation and perform computations with those hidden_states.
+    Specific detectors (e.g. LieDetector) inherit from it. 
+    """
     def __init__(self, model, tokenizer, user_tag, assistant_tag, device='cuda:0'):
         self.model = model
         self.tokenizer = tokenizer
@@ -13,14 +17,16 @@ class Detector:
         self.hiddens = None
         self.all_projs = None
     
-    def generate(self, prompt, **kwargs):
-
-        template_str = '{user_tag} {prompt} {assistant_tag}'
-        prompt = template_str.format(user_tag=self.user_tag, prompt=prompt, assistant_tag=self.assistant_tag)
-        model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
-        
+    def generate(self, prompt, **kwargs):        
+        """
+        Ensures hidden_states are saved during generation.
+        """
         kwargs['return_dict_in_generate'] = True
         kwargs['output_hidden_states'] = True
+
+        prompt = _format_prompt(prompt, self.user_tag, self.assistant_tag)
+        model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
+        
         with torch.no_grad():
             output = self.model.generate(**model_inputs, **kwargs)
         self.hiddens = output.hidden_states
@@ -28,6 +34,9 @@ class Detector:
         return output_text
 
     def get_projections(self, direction_info, input_text=None):
+        """
+        Computes the projections of hidden_states onto concept directions.
+        """
         directions = direction_info['directions']
         signs = direction_info['signs']
         mean_diffs = direction_info['mean_diffs']
@@ -48,7 +57,67 @@ class Detector:
     
     def __getattr__(self, name):
         return getattr(self.model, name)
+
+
+class ConceptController:
+    """
+    Wrapper around model that enables it to control generation by manipulating representation of
+    concepts at inference time. 
+    """
+    def __init__(self, direction_info, model, tokenizer, user_tag, assistant_tag, device='cuda:0'):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.user_tag = user_tag
+        self.assistant_tag = assistant_tag
+
+        self.directions = direction_info['directions']
+        self.signs = direction_info['signs']
+
+    def _clear_hooks(self, model):
+        for module in model.model.layers:
+            module._forward_hooks.clear()
+    
+    def generate(self, prompt, control_direction=None, n_trim_layers=10, alpha=1, **kwargs):
+        """
+        Adds/subtracts representation of a concept at inference time. 
+        control_direction: 1 adds the vector, -1 subtracts it
+        alpha: multiplicative factor applied to vector
+        n_trim_layers: number of layers to NOT manipulate on either side of model. 0 would manipulate all layers.
+        """
+        if control_direction is None:
+            raise ValueException('Must set control_direction to either +1 (adds vector) or -1 (subtracts vector)')
+
+        # add hooks 
+        self._clear_hooks(self.model) # good practice to clear hooks first
+        start_layer, end_layer = n_trim_layers, self.model.config.num_hidden_layers-n_trim_layers
+        layers = range(start_layer, end_layer)
+        for layer in layers:
+            def hook(m, inp, op):
+                if op[0].shape[1] > 1:
+                    # Doesn't effect the text produced, but as a good practice, this will skip over the input prompt (which is passed as a group of tokens)
+                    return op
+                op[0][0, 0, :] += alpha * self.directions[layer] * self.signs[layer] * control_direction
+                return op
+            # per https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L710, 
+            # the first value in module output (used in hook) is the input to the layer
+            h = self.model.model.layers[layer].register_forward_hook(hook)
+            
+        # generate after hooks have been
+        prompt = _format_prompt(prompt, self.user_tag, self.assistant_tag)
+        model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
+        output = self.model.generate(**model_inputs, **kwargs)
+        text = self.tokenizer.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        self._clear_hooks(self.model)
+        return text
+
+    def __getattr__(self, name):
+        return getattr(self.model, name)
         
+
+def _format_prompt(prompt, user_tag, assistant_tag):
+    template_str = '{user_tag} {prompt} {assistant_tag}'
+    prompt = template_str.format(user_tag=user_tag, prompt=prompt, assistant_tag=assistant_tag)
+    return prompt
 
 def get_activations_for_paired_statements(statement_pairs, model, tokenizer, sample_range, read_token=-1, batch_size=16, device='cuda:0'):
     layer_to_act_pairs = defaultdict(list)
