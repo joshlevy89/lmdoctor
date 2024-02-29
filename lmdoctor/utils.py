@@ -94,7 +94,7 @@ class ConceptController:
                 if op[0].shape[1] > 1:
                     # Doesn't effect the text produced, but as a good practice, this will skip over the input prompt (which is passed as a group of tokens)
                     return op
-                op[0][0, 0, :] += alpha * self.directions[layer] * control_direction
+                op[0][0, 0, :] += alpha * self.directions[layer] / self.directions[layer].norm()  * control_direction
                 return op
             # per https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L710, 
             # the first value in module output (used in hook) is the input to the layer
