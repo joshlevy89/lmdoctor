@@ -2,6 +2,7 @@ import torch
 from collections import defaultdict
 from sklearn.decomposition import PCA
 import numpy as np
+import torch.nn.functional as F
 
 class Detector:
     """
@@ -38,7 +39,6 @@ class Detector:
         Computes the projections of hidden_states onto concept directions.
         """
         directions = direction_info['directions']
-        signs = direction_info['signs']
         mean_diffs = direction_info['mean_diffs']
         
         if input_text:
@@ -50,7 +50,7 @@ class Detector:
 
         all_projs = []
         for layer in layer_to_acts:
-            projs = do_projections(layer_to_acts[layer], directions[layer], signs[layer], mean_diffs[layer], layer=layer)
+            projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer], layer=layer)
             all_projs.append(projs)
         self.all_projs = torch.stack(all_projs)
         return self.all_projs
@@ -69,9 +69,7 @@ class ConceptController:
         self.tokenizer = tokenizer
         self.user_tag = user_tag
         self.assistant_tag = assistant_tag
-
         self.directions = direction_info['directions']
-        self.signs = direction_info['signs']
 
     def _clear_hooks(self, model):
         for module in model.model.layers:
@@ -96,7 +94,7 @@ class ConceptController:
                 if op[0].shape[1] > 1:
                     # Doesn't effect the text produced, but as a good practice, this will skip over the input prompt (which is passed as a group of tokens)
                     return op
-                op[0][0, 0, :] += alpha * self.directions[layer] * self.signs[layer] * control_direction
+                op[0][0, 0, :] += alpha * self.directions[layer] * control_direction
                 return op
             # per https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L710, 
             # the first value in module output (used in hook) is the input to the layer
@@ -139,7 +137,7 @@ def get_activations_for_paired_statements(statement_pairs, model, tokenizer, sam
 
 def get_directions(train_acts, device='cuda:0'):
     directions = {}
-    signs = {}
+    scaled_directions = {}
     mean_diffs = {}
     direction_info = defaultdict(dict)
     for layer in train_acts:
@@ -154,33 +152,38 @@ def get_directions(train_acts, device='cuda:0'):
         centered_diffs = diffs - mean_diffs[layer] # is centering necessary?
         pca = PCA(n_components=1)
         pca.fit(centered_diffs.detach().cpu())
-        directions[layer] = torch.tensor(pca.components_[0], dtype=torch.float16).to(device)
+        direction = torch.tensor(pca.components_[0], dtype=torch.float16).to(device)
+        directions[layer] = direction 
         
-        # get signs
-        projections = do_projections(train_acts[layer], directions[layer], 1, mean_diffs[layer])
-        acc = np.mean([(pi > pj).item() for (pi, pj) in projections])
-        sign = -1 if acc < .5 else 1
-        signs[layer] = sign
-    direction_info['directions'] = directions
-    direction_info['signs'] = signs
+        # scale direction such that p(mu_a + scaled_direction) = p(mu_b), following marks et al. (https://arxiv.org/abs/2310.06824)
+        act_pairs = train_acts[layer]
+        mu_a = torch.mean(act_pairs[:, 0, :], axis=0)
+        mu_b = torch.mean(act_pairs[:, 1, :], axis=0)
+        norm_direction = F.normalize(direction, dim=0)
+        diff = (mu_a - mu_b) @ norm_direction.view(-1)
+        scaled_direction = (norm_direction * diff).view(-1)
+        scaled_directions[layer] = scaled_direction
+    
+    direction_info['unscaled_directions'] = directions # these aren't used, but kept for posterity
+    direction_info['directions'] = scaled_directions
     direction_info['mean_diffs'] = mean_diffs
     return direction_info
 
 
-def do_projections(acts, direction, sign, mean_diff, center=True, layer=None):
+def do_projections(acts, direction, mean_diff, center=True, layer=None):
     if center:
         acts = (acts - mean_diff).clone()
-    projections = sign * acts @ direction / direction.norm() # i don't think this projection is exactly right
+    projections =  acts @ direction / direction.norm() # i don't think this projection is exactly right
+    print('oklo')
     return projections
 
 
 def get_accs_for_pairs(test_acts, direction_info):
     directions = direction_info['directions']
-    signs = direction_info['signs']
     mean_diffs = direction_info['mean_diffs']
     accs = []
     for layer in test_acts:
-        projections = do_projections(test_acts[layer], directions[layer], signs[layer], mean_diffs[layer])
+        projections = do_projections(test_acts[layer], directions[layer], mean_diffs[layer])
         acc = np.mean([(pi > pj).item() for (pi, pj) in projections])
         accs.append(acc)
     return accs
