@@ -10,12 +10,13 @@ class HonestyExtractor:
         self.user_tag = user_tag
         self.assistant_tag = assistant_tag
         self.direction_info = None
+        self.statement_pairs = None
+        self.train_act_pairs = None
         
     def find_honesty_directions(self, sample_range=[0, 512]):
-        statement_pairs = prepare_statement_pairs(self.tokenizer, user_tag=self.user_tag, assistant_tag=self.assistant_tag)
-        train_act_pairs = get_activations_for_paired_statements(statement_pairs, self.model, self.tokenizer, sample_range=sample_range)   
-        direction_info = get_directions(train_act_pairs)
-        self.direction_info = direction_info
+        self.statement_pairs = prepare_statement_pairs(self.tokenizer, user_tag=self.user_tag, assistant_tag=self.assistant_tag)
+        self.train_act_pairs = get_activations_for_paired_statements(self.statement_pairs, self.model, self.tokenizer, sample_range=sample_range)   
+        self.direction_info = get_directions(self.train_act_pairs)
 
 
 class LieDetector(Detector):
