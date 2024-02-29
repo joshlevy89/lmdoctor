@@ -173,7 +173,7 @@ def get_directions(train_acts, device='cuda:0'):
 def do_projections(acts, direction, mean_diff, center=True, layer=None):
     if center:
         acts = (acts - mean_diff).clone()
-    projections =  acts @ direction #/ direction.norm() # i don't think this projection is exactly right
+    projections =  acts @ direction / direction.norm() # taking norm
     return projections
 
 
