@@ -2,8 +2,8 @@
 Utils for extracting representations associated with a function, e.g. honesty
 """
 
-from .honesty_utils import fetch_honesty_data
-from .morality_utils import fetch_morality_data
+from .function_specific_utils.honesty_utils import fetch_honesty_data
+from .function_specific_utils.morality_utils import fetch_morality_data
 
 import numpy as np
 from collections import defaultdict
@@ -124,4 +124,4 @@ def get_directions(train_acts, device='cuda:0'):
 #         projections = do_projections(test_acts[layer], directions[layer], mean_diffs[layer])
 #         acc = np.mean([(pi > pj).item() for (pi, pj) in projections])
 #         accs.append(acc)
-    return accs
+    # return accs

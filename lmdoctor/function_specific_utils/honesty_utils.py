@@ -1,6 +1,4 @@
 import pandas as pd
-import numpy as np
-from .utils import Detector
 import importlib
     
 def fetch_honesty_data():

@@ -16,8 +16,8 @@ for the latest source code or to report issues, please visit the [project reposi
 ```
 prompt = "Tell me a fact about humans"
 
-from lmdoctor import utils
-ld = utils.LieDetector(model, tokenizer, user_tag, assistant_tag)
+from lmdoctor import detection_utils
+ld = detection_utils.Detector(model, tokenizer, user_tag, assistant_tag)
 ld.generate(prompt, max_new_tokens=10, do_sample=True) # capture the hidden_states as the model generates
 ld.get_projections(extractor.direction_info) # project the hidden_states onto the representation direction vectors
 ld.detect(use_n_middle_layers=15) # aggregate projections over layers
@@ -40,8 +40,8 @@ output: I would tell the police that I did not kill anyone.
 ```
 ```
 # +honesty control
-from lmdoctor import utils
-hc = utils.ConceptController(honesty_extractor.direction_info, model, tokenizer, user_tag=user_tag, assistant_tag=assistant_tag)
+from lmdoctor import control_utils
+hc = control_utils.Controller(honesty_extractor.direction_info, model, tokenizer, user_tag=user_tag, assistant_tag=assistant_tag)
 hc.generate(prompt, control_direction=1, max_new_tokens=12)
 ```
 ```
