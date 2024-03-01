@@ -3,17 +3,19 @@ Utils for extracting representations associated with a function, e.g. honesty
 """
 
 from .honesty_utils import fetch_honesty_data
+from .morality_utils import fetch_morality_data
+
 import numpy as np
 from collections import defaultdict
 import torch
 from sklearn.decomposition import PCA
 import torch.nn.functional as F
 
-EXTRACTION_TARGET_MAP = {'honesty': fetch_honesty_data()}
-#                          # 'morality': prepare_morality_data}
+EXTRACTION_TARGET_MAP = {'honesty': fetch_honesty_data,
+                         'morality': fetch_morality_data}
 
 class Extractor:
-    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None):
+    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, n_statements=None):
 
         if extraction_target is None:
             raise ValueError(f"Must specify extraction_target. Must be one of {list(EXTRACTION_TARGET_MAP)}")
@@ -23,23 +25,28 @@ class Extractor:
         self.user_tag = user_tag
         self.assistant_tag = assistant_tag
         self.extraction_target = extraction_target
+        self.n_statements = n_statements
         self.direction_info = None
         self.statement_pairs = None
         self.train_act_pairs = None
         
     def find_directions(self, sample_range=[0, 512]):
-        data, prompt_maker = EXTRACTION_TARGET_MAP[self.extraction_target]
+        data, prompt_maker = EXTRACTION_TARGET_MAP[self.extraction_target]()
         self.statement_pairs = prepare_statement_pairs(
-            data, prompt_maker, self.tokenizer, user_tag=self.user_tag, assistant_tag=self.assistant_tag)
+            data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
         self.train_act_pairs = get_activations_for_paired_statements(
             self.statement_pairs, self.model, self.tokenizer, sample_range=sample_range)   
         self.direction_info = get_directions(self.train_act_pairs)
     
 
-def prepare_statement_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag):
-
+def prepare_statement_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_statements=None):
+    """
+    n_statemets: if set, will only use the first n_statements when making pairs
+    """
     statement_pairs = []
     statements = data[data['label'] == 1]['statement'].values.tolist() # they only use label=1 for some reason
+    if n_statements:
+        statements = statements[:n_statements]
     for statement in statements:
         tokens = tokenizer.tokenize(statement)
         for idx in range(1, len(tokens)-5):

@@ -16,10 +16,11 @@ for the latest source code or to report issues, please visit the [project reposi
 ```
 prompt = "Tell me a fact about humans"
 
-from lmdoctor import honesty_utils
-ld = honesty_utils.LieDetector(model, tokenizer, user_tag, assistant_tag)
-text = ld.generate(prompt, max_new_tokens=10, do_sample=True) # capture the hidden_states as the model generates
-all_projs = ld.get_projections(honesty_extractor.direction_info) # project the hidden_states onto the direction vectors from honesty extraction
+from lmdoctor import utils
+ld = utils.LieDetector(model, tokenizer, user_tag, assistant_tag)
+ld.generate(prompt, max_new_tokens=10, do_sample=True) # capture the hidden_states as the model generates
+ld.get_projections(extractor.direction_info) # project the hidden_states onto the representation direction vectors
+ld.detect(use_n_middle_layers=15) # aggregate projections over layers
 ```
 
 ![truth](https://github.com/joshlevy89/lmdoctor/blob/main/assets/readme/truth.png?raw=true)

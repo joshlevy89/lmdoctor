@@ -52,6 +52,34 @@ class Detector:
             all_projs.append(projs)
         self.all_projs = torch.stack(all_projs)
         return self.all_projs
+
+    def detect(self, layers_to_use=None, use_n_middle_layers=None):
+        """
+        Logic for aggregating over layers to score tokens for degree of lying. 
+        set one of:
+            layers_to_use: -1 (all layers) or [start_layer, end_layer]
+            use_n_middle_layers: number of middle layers to use
+        """        
+        
+        if layers_to_use:
+            if use_n_middle_layers:
+                raise ValueError('Either specify layers_to_use or use_n_middle_layers, not both')
+            if layers_to_use == -1:
+                layers_to_use = range(0, self.model.config.num_hidden_layers)
+            else:
+                layers_to_use = range(layers_to_use[0], layers_to_use[1])
+        elif use_n_middle_layers:
+            n_layers = self.model.config.num_hidden_layers
+            mid = n_layers // 2
+            diff = use_n_middle_layers // 2
+            layers_to_use = range(max(0, mid - diff), min(mid + diff, n_layers))
+        else:
+            raise ValueError('Either specify layers_to_use or use_n_middle_layers')
+            
+        layer_avg = self.all_projs[layers_to_use, :].mean(axis=0)
+        layer_avg = layer_avg.detach().cpu().numpy()
+        layer_avg = layer_avg.reshape(1, -1)
+        return layer_avg
     
     def __getattr__(self, name):
         return getattr(self.model, name)
