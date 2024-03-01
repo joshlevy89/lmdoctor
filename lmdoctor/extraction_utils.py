@@ -4,6 +4,8 @@ Utils for extracting representations associated with a function, e.g. honesty
 
 from .function_specific_utils.honesty_utils import fetch_honesty_data
 from .function_specific_utils.morality_utils import fetch_morality_data
+from .function_specific_utils.emotion_utils import fetch_anger_data, fetch_happiness_data
+
 
 import numpy as np
 from collections import defaultdict
@@ -12,7 +14,9 @@ from sklearn.decomposition import PCA
 import torch.nn.functional as F
 
 EXTRACTION_TARGET_MAP = {'honesty': fetch_honesty_data,
-                         'morality': fetch_morality_data}
+                         'morality': fetch_morality_data,
+                         'anger': fetch_anger_data,
+                         'happiness': fetch_happiness_data}
 
 class Extractor:
     def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, n_statements=None):
@@ -44,7 +48,7 @@ def prepare_statement_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_
     n_statemets: if set, will only use the first n_statements when making pairs
     """
     statement_pairs = []
-    statements = data[data['label'] == 1]['statement'].values.tolist() # they only use label=1 for some reason
+    statements = data['statement'].values.tolist()
     if n_statements:
         statements = statements[:n_statements]
     for statement in statements:
