@@ -4,8 +4,7 @@ Utils for extracting representations associated with a function, e.g. honesty
 
 from .function_specific_utils.honesty_utils import fetch_honesty_data
 from .function_specific_utils.morality_utils import fetch_morality_data
-from .function_specific_utils.emotion_utils import fetch_anger_data, fetch_happiness_data
-
+from .function_specific_utils.emotion_utils import fetch_emotion_data
 
 import numpy as np
 from collections import defaultdict
@@ -13,16 +12,11 @@ import torch
 from sklearn.decomposition import PCA
 import torch.nn.functional as F
 
-EXTRACTION_TARGET_MAP = {'honesty': fetch_honesty_data,
-                         'morality': fetch_morality_data,
-                         'anger': fetch_anger_data,
-                         'happiness': fetch_happiness_data}
-
 class Extractor:
     def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, n_statements=None):
 
         if extraction_target is None:
-            raise ValueError(f"Must specify extraction_target. Must be one of {list(EXTRACTION_TARGET_MAP)}")
+            raise ValueError(f"Must specify extraction_target. Must be one of {list(get_extraction_target_map())}")
         
         self.model = model
         self.tokenizer = tokenizer
@@ -35,7 +29,7 @@ class Extractor:
         self.train_act_pairs = None
         
     def find_directions(self, sample_range=[0, 512]):
-        data, prompt_maker = EXTRACTION_TARGET_MAP[self.extraction_target]()
+        data, prompt_maker = get_extraction_function(self.extraction_target)()
         self.statement_pairs = prepare_statement_pairs(
             data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
         self.train_act_pairs = get_activations_for_paired_statements(
@@ -43,6 +37,21 @@ class Extractor:
         self.direction_info = get_directions(self.train_act_pairs)
     
 
+def get_extraction_function(target):
+    target_map = get_extraction_target_map()
+    if target not in target_map:
+        raise ValueError(f"Extraction target must be one of {list(target_map)}")
+    return target_map[target]
+
+def get_extraction_target_map():
+    target_map = {
+        'honesty': fetch_honesty_data,
+        'morality': fetch_morality_data,
+        'anger': fetch_emotion_data('anger'),
+        'happiness': fetch_emotion_data('happiness')
+    }
+    return target_map
+    
 def prepare_statement_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_statements=None):
     """
     n_statemets: if set, will only use the first n_statements when making pairs
