@@ -1,7 +1,6 @@
 """
 Utils for extracting representations associated with a function, e.g. honesty
 """
-
 from .function_specific_utils.honesty_utils import fetch_honesty_data
 from .function_specific_utils.morality_utils import fetch_morality_data
 from .function_specific_utils.emotion_utils import fetch_emotion_data
@@ -11,6 +10,7 @@ from collections import defaultdict
 import torch
 from sklearn.decomposition import PCA
 import torch.nn.functional as F
+import random
 
 class Extractor:
     def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, n_statements=None):
@@ -29,9 +29,15 @@ class Extractor:
         self.train_act_pairs = None
         
     def find_directions(self, sample_range=[0, 512]):
-        data, prompt_maker = get_extraction_function(self.extraction_target)()
-        self.statement_pairs = prepare_statement_pairs(
-            data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
+        extraction_fn, extraction_type = get_extraction_function(self.extraction_target)
+        data, prompt_maker = extraction_fn()
+        if extraction_type == 'functional':
+            self.statement_pairs = prepare_functional_pairs(
+                data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
+        elif extraction_type == 'conceptual':
+            self.statement_pairs = prepare_conceptual_pairs(
+                data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
+            
         self.train_act_pairs = get_activations_for_paired_statements(
             self.statement_pairs, self.model, self.tokenizer, sample_range=sample_range)   
         self.direction_info = get_directions(self.train_act_pairs)
@@ -45,15 +51,18 @@ def get_extraction_function(target):
 
 def get_extraction_target_map():
     target_map = {
-        'honesty': fetch_honesty_data,
-        'morality': fetch_morality_data,
-        'anger': fetch_emotion_data('anger'),
-        'happiness': fetch_emotion_data('happiness')
+        'honesty': (fetch_honesty_data, 'functional'),
+        'morality': (fetch_morality_data, 'functional'),
+        'anger': (fetch_emotion_data('anger'), 'conceptual'),
+        'happiness': (fetch_emotion_data('happiness'), 'conceptual')
     }
     return target_map
-    
-def prepare_statement_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_statements=None):
+
+
+def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_statements=None):
     """
+    Pair statements by expanding positive and negative version of a prompt (e.g. tell me a fact about..., 
+    tell me a lie about...), one token a token at a time.
     n_statemets: if set, will only use the first n_statements when making pairs
     """
     statement_pairs = []
@@ -64,9 +73,29 @@ def prepare_statement_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_
         tokens = tokenizer.tokenize(statement)
         for idx in range(1, len(tokens)-5):
             substatement = tokenizer.convert_tokens_to_string(tokens[:idx])
-            honest_statement = _prompt_maker(substatement, True, user_tag, assistant_tag)
-            dishonest_statement = _prompt_maker(substatement, False, user_tag, assistant_tag)
-            statement_pairs.append([honest_statement, dishonest_statement])
+            positive_statement = _prompt_maker(substatement, True, user_tag, assistant_tag)
+            negative_statement = _prompt_maker(substatement, False, user_tag, assistant_tag)
+            statement_pairs.append([positive_statement, negative_statement])
+    statement_pairs = np.array(statement_pairs)
+    return statement_pairs
+
+
+def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_statements=None):
+    """
+    Pair statements that contain concept with random statements that are missing the concept.
+    n_statemets: if set, will only use the first n_statements when making pairs
+    """
+    statement_pairs = []
+    contain_statements = data.loc[data['has_concept'] == 1]['statement'].values.tolist()
+    if n_statements:
+        contain_statements = contain_statements[:n_statements]
+    missing_statements = data.loc[data['has_concept'] == 0]['statement'].values.tolist()
+    random.shuffle(missing_statements)
+
+    for i in range(len(contain_statements)):
+        contain_statement = _prompt_maker(contain_statements[i], user_tag, assistant_tag)
+        missing_statement = _prompt_maker(missing_statements[i], user_tag, assistant_tag)
+        statement_pairs.append([contain_statement, missing_statement])
     statement_pairs = np.array(statement_pairs)
     return statement_pairs
 
