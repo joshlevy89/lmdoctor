@@ -1,33 +1,21 @@
 import json
 import pandas as pd
 import importlib
+
+def fetch_emotion_data(emotion_name):
     
-def fetch_anger_data():
+    def emotion_wrapper():
+        def _prompt_maker(stimulus, emotion, user_tag, assistant_tag):
+            prompt = f"{user_tag} As a person {f'filled with {emotion_name}' if emotion else f'without any {emotion_name}'}"\
+            f" how would you react in this scenario: {stimulus} {assistant_tag}"
+            return prompt
+            
+        with importlib.resources.open_text('lmdoctor.data.emotions', 'anger.json') as data_path:
+            scenarios = json.load(data_path)
     
-    def _prompt_maker(stimulus, angry, user_tag, assistant_tag):
-        prompt = f"{user_tag} As a person {'filled with anger' if angry else 'without any anger'}"\
-        f" how would you react in this scenario: {stimulus} {assistant_tag}"
-        return prompt
+        data = pd.DataFrame({'statement': scenarios})
         
-    with importlib.resources.open_text('lmdoctor.data.emotions', 'anger.json') as data_path:
-        scenarios = json.load(data_path)
+        return data, _prompt_maker
 
-    data = pd.DataFrame({'statement': scenarios})
-    
-    return data, _prompt_maker
-
-
-def fetch_happiness_data():
-    
-    def _prompt_maker(stimulus, happy, user_tag, assistant_tag):
-        prompt = f"{user_tag} As a person {'filled with happiness' if happy else 'without any happiness'}"\
-        f" how would you react in this scenario: {stimulus} {assistant_tag}"
-        return prompt
-        
-    with importlib.resources.open_text('lmdoctor.data.emotions', 'anger.json') as data_path:
-        scenarios = json.load(data_path)
-
-    data = pd.DataFrame({'statement': scenarios})
-    
-    return data, _prompt_maker
+    return emotion_wrapper
 
