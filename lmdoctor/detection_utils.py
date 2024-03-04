@@ -16,9 +16,9 @@ class Detector:
         self.hiddens = None
         self.all_projs = None
     
-    def generate(self, prompt, **kwargs):        
+    def generate(self, prompt, gen_only=False, **kwargs):
         """
-        Ensures hidden_states are saved during generation.
+        If gen only, get hiddens/text for newly generated text only (i.e. exclude prompt)
         """
         kwargs['return_dict_in_generate'] = True
         kwargs['output_hidden_states'] = True
@@ -28,10 +28,18 @@ class Detector:
         
         with torch.no_grad():
             output = self.model.generate(**model_inputs, **kwargs)
-        self.hiddens = output.hidden_states
-        output_text = self.tokenizer.batch_decode(output.sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        return output_text
+        
+        if gen_only:
+            sequences = output.sequences[:, model_inputs.input_ids.shape[1]:]
+            self.hiddens = output.hidden_states[1:]
+        else:
+            sequences = output.sequences
+            self.hiddens = output.hidden_states
 
+        output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+
+        return output_text
+    
     def get_projections(self, direction_info, input_text=None):
         """
         Computes the projections of hidden_states onto concept directions.
