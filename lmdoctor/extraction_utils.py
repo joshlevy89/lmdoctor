@@ -1,9 +1,9 @@
 """
 Utils for extracting representations associated with a function, e.g. honesty
 """
-from .function_specific_utils.honesty_utils import fetch_honesty_data
-from .function_specific_utils.morality_utils import fetch_morality_data
-from .function_specific_utils.emotion_utils import fetch_emotion_data
+from .target_specific_utils.honesty_utils import fetch_honesty_data
+from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
+from .target_specific_utils.emotion_utils import fetch_emotion_data
 
 import numpy as np
 from collections import defaultdict
@@ -11,9 +11,12 @@ import torch
 from sklearn.decomposition import PCA
 import torch.nn.functional as F
 import random
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class Extractor:
-    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, n_statements=None):
+    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None, n_statements=None):
 
         if extraction_target is None:
             raise ValueError(f"Must specify extraction_target. Must be one of {list(get_extraction_target_map())}")
@@ -23,18 +26,19 @@ class Extractor:
         self.user_tag = user_tag
         self.assistant_tag = assistant_tag
         self.extraction_target = extraction_target
+        self.extraction_method = extraction_method
         self.n_statements = n_statements
         self.direction_info = None
         self.statement_pairs = None
         self.train_act_pairs = None
         
     def find_directions(self, sample_range=[0, 512]):
-        extraction_fn, extraction_type = get_extraction_function(self.extraction_target)
+        extraction_fn, extraction_method = get_extraction_function(self.extraction_target, self.extraction_method)
         data, prompt_maker = extraction_fn()
-        if extraction_type == 'functional':
+        if extraction_method == 'functional':
             self.statement_pairs = prepare_functional_pairs(
                 data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
-        elif extraction_type == 'conceptual':
+        elif extraction_method == 'conceptual':
             self.statement_pairs = prepare_conceptual_pairs(
                 data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
             
@@ -43,18 +47,38 @@ class Extractor:
         self.direction_info = get_directions(self.train_act_pairs)
     
 
-def get_extraction_function(target):
+def get_extraction_function(target, extraction_method=None):
+    """
+    Get the data extraction function for the given target and extraction_method (functional or conceptual). 
+    If no extraction_method supplied, tries to infer one. 
+    """
     target_map = get_extraction_target_map()
-    if target not in target_map:
-        raise ValueError(f"Extraction target must be one of {list(target_map)}")
-    return target_map[target]
+    target_matches = [k for k in list(target_map) if k[0]==target] # all the tuple-keys that match the target
+    if not target_matches:
+        valid_targets = np.unique([k[0] for k in list(target_map)])
+        raise ValueError(f"Extraction target must be one of {valid_targets}")
+    if extraction_method:
+        return target_map[(target, extraction_method)], extraction_method
+    else:
+        if len(target_matches) == 1:
+            # Infer extraction_method, if only one target match
+            inferred_extraction_method = target_matches[0][1]
+            logger.info(f'Inferring {inferred_extraction_method} extraction_method because none was passed') 
+            return target_map[(target, inferred_extraction_method)], inferred_extraction_method
+        else:
+            raise RuntimeError(f"Cannot infer extraction_method for {target} extraction_target because it has {len(target_matches)} entries in target_map: {target_matches}")
 
 def get_extraction_target_map():
     target_map = {
-        'honesty': (fetch_honesty_data, 'functional'),
-        'morality': (fetch_morality_data, 'functional'),
-        'anger': (fetch_emotion_data('anger'), 'conceptual'),
-        'happiness': (fetch_emotion_data('happiness'), 'conceptual')
+        ('honesty', 'functional'): fetch_honesty_data,
+        ('morality', 'functional'): fetch_morality_data_functional,
+        ('morality', 'conceptual'): fetch_morality_data_conceptual,
+        ('anger', 'conceptual'): fetch_emotion_data('anger'), 
+        ('disgust', 'conceptual'): fetch_emotion_data('disgust'),
+        ('fear', 'conceptual'): fetch_emotion_data('fear'), 
+        ('happiness', 'conceptual'): fetch_emotion_data('happiness'), 
+        ('sadness', 'conceptual'): fetch_emotion_data('sadness'), 
+        ('surprise', 'conceptual'): fetch_emotion_data('surprise'),
     }
     return target_map
 
