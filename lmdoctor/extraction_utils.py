@@ -1,7 +1,7 @@
 """
 Utils for extracting representations associated with a function, e.g. honesty
 """
-from .target_specific_utils.honesty_utils import fetch_honesty_data
+from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional 
 from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
 from .target_specific_utils.emotion_utils import fetch_emotion_data
 
@@ -11,9 +11,9 @@ import torch
 from sklearn.decomposition import PCA
 import torch.nn.functional as F
 import random
-import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+from .utils import setup_logger
+logger = setup_logger()
+
 
 class Extractor:
     def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None, n_statements=None):
@@ -32,7 +32,7 @@ class Extractor:
         self.statement_pairs = None
         self.train_act_pairs = None
         
-    def find_directions(self, sample_range=[0, 512]):
+    def find_directions(self, sample_range=[0, 512], batch_size=16):
         extraction_fn, extraction_method = get_extraction_function(self.extraction_target, self.extraction_method)
         data, prompt_maker = extraction_fn()
         if extraction_method == 'functional':
@@ -43,13 +43,13 @@ class Extractor:
                 data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
             
         self.train_act_pairs = get_activations_for_paired_statements(
-            self.statement_pairs, self.model, self.tokenizer, sample_range=sample_range)   
+            self.statement_pairs, self.model, self.tokenizer, sample_range=sample_range, batch_size=batch_size)   
         self.direction_info = get_directions(self.train_act_pairs)
     
 
 def get_extraction_function(target, extraction_method=None):
     """
-    Get the data extraction function for the given target and extraction_method (functional or conceptual). 
+    Get the data extraction function for the given target and extraction. 
     If no extraction_method supplied, tries to infer one. 
     """
     target_map = get_extraction_target_map()
@@ -70,7 +70,8 @@ def get_extraction_function(target, extraction_method=None):
 
 def get_extraction_target_map():
     target_map = {
-        ('honesty', 'functional'): fetch_honesty_data,
+        ('truth', 'conceptual'): fetch_factual_data_conceptual,
+        ('honesty', 'functional'): fetch_factual_data_functional,
         ('morality', 'functional'): fetch_morality_data_functional,
         ('morality', 'conceptual'): fetch_morality_data_conceptual,
         ('anger', 'conceptual'): fetch_emotion_data('anger'), 
@@ -110,10 +111,10 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     n_statemets: if set, will only use the first n_statements when making pairs
     """
     statement_pairs = []
-    contain_statements = data.loc[data['has_concept'] == 1]['statement'].values.tolist()
+    contain_statements = data.loc[data['label'] == 1]['statement'].values.tolist()
     if n_statements:
         contain_statements = contain_statements[:n_statements]
-    missing_statements = data.loc[data['has_concept'] == 0]['statement'].values.tolist()
+    missing_statements = data.loc[data['label'] == 0]['statement'].values.tolist()
     random.shuffle(missing_statements)
 
     for i in range(len(contain_statements)):
@@ -124,16 +125,24 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     return statement_pairs
 
 
-def get_activations_for_paired_statements(statement_pairs, model, tokenizer, sample_range, read_token=-1, batch_size=16, device='cuda:0'):
+def get_activations_for_paired_statements(statement_pairs, model, tokenizer, sample_range, read_token=-1, batch_size=8, device='cuda:0'):
     layer_to_act_pairs = defaultdict(list)
-    for i in range(sample_range[0], sample_range[1], batch_size):
+    if len(statement_pairs) < sample_range[1]:
+        logger.info(f'Number of statement pairs ({len(statement_pairs)}) is less than requested in sample_range: {sample_range}, hence only processing that many.')
+        top_range = len(statement_pairs)
+    else:
+        top_range = sample_range[1]
+    for i in range(sample_range[0], top_range, batch_size):
         pairs = statement_pairs[i:i+batch_size]
         statements = pairs.reshape(-1)
         model_inputs = tokenizer(list(statements), padding=True, return_tensors='pt').to(device)
         with torch.no_grad():
-            hiddens = model(**model_inputs, output_hidden_states=True)
+            try:
+                hiddens = model(**model_inputs, output_hidden_states=True)
+            except:
+                import pdb; pdb.set_trace()
         for layer in range(model.config.num_hidden_layers):
-            act_pairs = hiddens['hidden_states'][layer+1][:, read_token, :].view(batch_size, 2, -1)
+            act_pairs = hiddens['hidden_states'][layer+1][:, read_token, :].view(len(pairs), 2, -1)
             layer_to_act_pairs[layer].extend(act_pairs)
     
     for key in layer_to_act_pairs:

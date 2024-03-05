@@ -29,5 +29,5 @@ def fetch_morality_data():
         data = pd.read_csv(data_path)
     data = data[['input', 'label', 'is_short']]
     data['label'] = 1 - data['label'] # flip 0s and 1s so that morality=1
-    data = data.rename(columns={'input': 'statement', 'label': 'has_concept'})
+    data = data.rename(columns={'input': 'statement'})
     return data

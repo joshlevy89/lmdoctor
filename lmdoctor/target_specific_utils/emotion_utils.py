@@ -25,7 +25,7 @@ def fetch_emotion_data(emotion_name):
             return prompt
 
         data = fetch_all_emotion_data()
-        data['has_concept'] = np.where(data['emotion'] == emotion_name, 1, 0)
+        data['label'] = np.where(data['emotion'] == emotion_name, 1, 0)
         return data, _prompt_maker
 
     return emotion_wrapper
