@@ -16,7 +16,7 @@ logger = setup_logger()
 
 
 class Extractor:
-    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None, n_statements=None):
+    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None):
 
         if extraction_target is None:
             raise ValueError(f"Must specify extraction_target. Must be one of {list(get_extraction_target_map())}")
@@ -27,23 +27,27 @@ class Extractor:
         self.assistant_tag = assistant_tag
         self.extraction_target = extraction_target
         self.extraction_method = extraction_method
-        self.n_statements = n_statements
         self.direction_info = None
         self.statement_pairs = None
         self.train_act_pairs = None
         
-    def find_directions(self, batch_size=8, sample_range=[0, 512]):
+    def find_directions(self, batch_size=8, n_pairs=128):
+        """
+        n_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
+        """
         extraction_fn, extraction_method = get_extraction_function(self.extraction_target, self.extraction_method)
         data, prompt_maker = extraction_fn()
         if extraction_method == 'functional':
-            self.statement_pairs = prepare_functional_pairs(
-                data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
+            statement_pairs = prepare_functional_pairs(data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag)
         elif extraction_method == 'conceptual':
-            self.statement_pairs = prepare_conceptual_pairs(
-                data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
+            statement_pairs = prepare_conceptual_pairs(data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag)
+
+        if n_pairs:
+            self.statement_pairs = statement_pairs[:n_pairs]
+        else:
+            self.statement_pairs = statement_pairs
             
-        self.train_act_pairs = get_activations_for_paired_statements(
-            self.statement_pairs, self.model, self.tokenizer, batch_size, sample_range)   
+        self.train_act_pairs = get_activations_for_paired_statements(self.statement_pairs, self.model, self.tokenizer, batch_size)   
         self.direction_info = get_directions(self.train_act_pairs)
     
 
@@ -84,16 +88,13 @@ def get_extraction_target_map():
     return target_map
 
 
-def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_statements=None):
+def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag):
     """
     Pair statements by expanding positive and negative version of a prompt (e.g. tell me a fact about..., 
     tell me a lie about...), one token a token at a time.
-    n_statemets: if set, will only use the first n_statements when making pairs
     """
     statement_pairs = []
     statements = data['statement'].values.tolist()
-    if n_statements:
-        statements = statements[:n_statements]
     for statement in statements:
         tokens = tokenizer.tokenize(statement)
         for idx in range(1, len(tokens)-5):
@@ -105,15 +106,12 @@ def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     return statement_pairs
 
 
-def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_statements=None):
+def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag):
     """
     Pair statements that contain concept with random statements that are missing the concept.
-    n_statemets: if set, will only use the first n_statements when making pairs
     """
     statement_pairs = []
     contain_statements = data.loc[data['label'] == 1]['statement'].values.tolist()
-    if n_statements:
-        contain_statements = contain_statements[:n_statements]
     missing_statements = data.loc[data['label'] == 0]['statement'].values.tolist()
     random.shuffle(missing_statements)
 
@@ -125,14 +123,9 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     return statement_pairs
 
 
-def get_activations_for_paired_statements(statement_pairs, model, tokenizer, batch_size, sample_range, read_token=-1, device='cuda:0'):
+def get_activations_for_paired_statements(statement_pairs, model, tokenizer, batch_size, read_token=-1, device='cuda:0'):
     layer_to_act_pairs = defaultdict(list)
-    if len(statement_pairs) < sample_range[1]:
-        logger.info(f'Number of statement pairs ({len(statement_pairs)}) is less than requested in sample_range: {sample_range}, hence only processing that many.')
-        top_range = len(statement_pairs)
-    else:
-        top_range = sample_range[1]
-    for i in range(sample_range[0], top_range, batch_size):
+    for i in range(0, len(statement_pairs), batch_size):
         pairs = statement_pairs[i:i+batch_size]
         statements = pairs.reshape(-1)
         model_inputs = tokenizer(list(statements), padding=True, return_tensors='pt').to(device)
