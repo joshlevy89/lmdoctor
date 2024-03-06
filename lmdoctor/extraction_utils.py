@@ -32,7 +32,7 @@ class Extractor:
         self.statement_pairs = None
         self.train_act_pairs = None
         
-    def find_directions(self, sample_range=[0, 512], batch_size=16):
+    def find_directions(self, batch_size=8, sample_range=[0, 512]):
         extraction_fn, extraction_method = get_extraction_function(self.extraction_target, self.extraction_method)
         data, prompt_maker = extraction_fn()
         if extraction_method == 'functional':
@@ -43,7 +43,7 @@ class Extractor:
                 data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, n_statements=self.n_statements)
             
         self.train_act_pairs = get_activations_for_paired_statements(
-            self.statement_pairs, self.model, self.tokenizer, sample_range=sample_range, batch_size=batch_size)   
+            self.statement_pairs, self.model, self.tokenizer, batch_size, sample_range)   
         self.direction_info = get_directions(self.train_act_pairs)
     
 
@@ -125,7 +125,7 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     return statement_pairs
 
 
-def get_activations_for_paired_statements(statement_pairs, model, tokenizer, sample_range, read_token=-1, batch_size=8, device='cuda:0'):
+def get_activations_for_paired_statements(statement_pairs, model, tokenizer, batch_size, sample_range, read_token=-1, device='cuda:0'):
     layer_to_act_pairs = defaultdict(list)
     if len(statement_pairs) < sample_range[1]:
         logger.info(f'Number of statement pairs ({len(statement_pairs)}) is less than requested in sample_range: {sample_range}, hence only processing that many.')
