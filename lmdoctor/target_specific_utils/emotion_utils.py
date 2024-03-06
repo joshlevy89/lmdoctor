@@ -26,7 +26,7 @@ def fetch_emotion_data(emotion_name):
 
         data = fetch_all_emotion_data()
         data['label'] = np.where(data['emotion'] == emotion_name, 1, 0)
-        return data, _prompt_maker
+        return data, _prompt_maker, True
 
     return emotion_wrapper
 

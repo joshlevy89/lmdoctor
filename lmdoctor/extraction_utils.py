@@ -4,6 +4,8 @@ Utils for extracting representations associated with a function, e.g. honesty
 from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional 
 from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
 from .target_specific_utils.emotion_utils import fetch_emotion_data
+from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual
+
 
 import numpy as np
 from collections import defaultdict
@@ -36,11 +38,14 @@ class Extractor:
         n_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
         """
         extraction_fn, extraction_method = get_extraction_function(self.extraction_target, self.extraction_method)
-        data, prompt_maker = extraction_fn()
+        
         if extraction_method == 'functional':
+            data, prompt_maker = extraction_fn()
             statement_pairs = prepare_functional_pairs(data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag)
         elif extraction_method == 'conceptual':
-            statement_pairs = prepare_conceptual_pairs(data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag)
+            data, prompt_maker, shuffle = extraction_fn()
+            statement_pairs = prepare_conceptual_pairs(data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, shuffle)
+        
 
         if n_pairs:
             self.statement_pairs = statement_pairs[:n_pairs]
@@ -84,6 +89,7 @@ def get_extraction_target_map():
         ('happiness', 'conceptual'): fetch_emotion_data('happiness'), 
         ('sadness', 'conceptual'): fetch_emotion_data('sadness'), 
         ('surprise', 'conceptual'): fetch_emotion_data('surprise'),
+        ('fairness', 'conceptual'): fetch_fairness_data_conceptual
     }
     return target_map
 
@@ -106,14 +112,15 @@ def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     return statement_pairs
 
 
-def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag):
+def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, shuffle):
     """
-    Pair statements that contain concept with random statements that are missing the concept.
+    Pair statements that contain concept with statements that are missing the concept.
     """
     statement_pairs = []
     contain_statements = data.loc[data['label'] == 1]['statement'].values.tolist()
     missing_statements = data.loc[data['label'] == 0]['statement'].values.tolist()
-    random.shuffle(missing_statements)
+    if shuffle:
+        random.shuffle(missing_statements)
 
     for i in range(len(contain_statements)):
         contain_statement = _prompt_maker(contain_statements[i], user_tag, assistant_tag)

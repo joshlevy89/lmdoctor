@@ -17,6 +17,7 @@ def fetch_factual_data_functional():
     data = fetch_factual_data()
     return data, _prompt_maker
 
+
 def fetch_factual_data_conceptual():
 
     def _prompt_maker(stimulus, user_tag, assistant_tag):
@@ -24,5 +25,5 @@ def fetch_factual_data_conceptual():
         return prompt
     
     data = fetch_factual_data()
-    return data, _prompt_maker
+    return data, _prompt_maker, True
 

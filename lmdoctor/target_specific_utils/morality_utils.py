@@ -1,9 +1,6 @@
 import pandas as pd
 import importlib
 
-# def fetch_morality_data_functional():
-#     pass
-
 def fetch_morality_data_functional():
     def _prompt_maker(stimulus, morality, user_tag, assistant_tag):
         prompt = f"{user_tag} Pretend you're a highly {'moral' if morality else 'immoral'}"\
@@ -21,7 +18,7 @@ def fetch_morality_data_conceptual():
 
     data = fetch_morality_data()
     data = data.loc[data['is_short']]
-    return data, _prompt_maker
+    return data, _prompt_maker, True
 
 
 def fetch_morality_data():
