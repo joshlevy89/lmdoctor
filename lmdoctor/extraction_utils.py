@@ -3,8 +3,8 @@ Utils for extracting representations associated with a function, e.g. honesty
 """
 from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional 
 from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
-from .target_specific_utils.emotion_utils import fetch_emotion_data
-from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual
+from .target_specific_utils.emotion_utils import fetch_emotion_data_wrapper
+from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual_wrapper, fetch_fairness_data_functional_wrapper
 
 
 import numpy as np
@@ -18,7 +18,14 @@ logger = setup_logger()
 
 
 class Extractor:
-    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None):
+    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None, **kwargs):
+        """
+        kwargs: Additional keyword arguments, such as:
+        - bias_type (str): The type of bias to use for fairness extraction.
+        - emotion_type (str): The type of emotion to use for emotion extraction.
+        - n_trim_tokens (int): The number of tokens to trim from the end of statements for functional extraction. Defaults to 5.
+        - shuffle (bool): Whether to shuffle statements for conceptual extraction. Defaults to True.
+        """
 
         if extraction_target is None:
             raise ValueError(f"Must specify extraction_target. Must be one of {list(get_extraction_target_map())}")
@@ -29,6 +36,7 @@ class Extractor:
         self.assistant_tag = assistant_tag
         self.extraction_target = extraction_target
         self.extraction_method = extraction_method
+        self.kwargs = kwargs
         self.direction_info = None
         self.statement_pairs = None
         self.train_act_pairs = None
@@ -36,32 +44,19 @@ class Extractor:
     def find_directions(self, batch_size=8, n_pairs=128):
         """
         n_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
-        """
-        extraction_fn, extraction_method = get_extraction_function(self.extraction_target, self.extraction_method)
-        
-        if extraction_method == 'functional':
-            data, prompt_maker = extraction_fn()
-            statement_pairs = prepare_functional_pairs(data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag)
-        elif extraction_method == 'conceptual':
-            data, prompt_maker, shuffle = extraction_fn()
-            statement_pairs = prepare_conceptual_pairs(data, prompt_maker, self.tokenizer, self.user_tag, self.assistant_tag, shuffle)
-        
-
-        if n_pairs:
-            self.statement_pairs = statement_pairs[:n_pairs]
-        else:
-            self.statement_pairs = statement_pairs
-            
+        """        
+        self.statement_pairs = prepare_statement_pairs(
+            self.extraction_target, self.extraction_method, self.tokenizer, self.user_tag, self.assistant_tag, n_pairs, **self.kwargs)
         self.train_act_pairs = get_activations_for_paired_statements(self.statement_pairs, self.model, self.tokenizer, batch_size)   
         self.direction_info = get_directions(self.train_act_pairs)
     
 
-def get_extraction_function(target, extraction_method=None):
+def get_extraction_function(target, extraction_method=None, **kwargs):
     """
     Get the data extraction function for the given target and extraction. 
     If no extraction_method supplied, tries to infer one. 
     """
-    target_map = get_extraction_target_map()
+    target_map = get_extraction_target_map(target, **kwargs)
     target_matches = [k for k in list(target_map) if k[0]==target] # all the tuple-keys that match the target
     if not target_matches:
         valid_targets = np.unique([k[0] for k in list(target_map)])
@@ -76,25 +71,58 @@ def get_extraction_function(target, extraction_method=None):
             return target_map[(target, inferred_extraction_method)], inferred_extraction_method
         else:
             raise RuntimeError(f"Cannot infer extraction_method for {target} extraction_target because it has {len(target_matches)} entries in target_map: {target_matches}")
+    
 
-def get_extraction_target_map():
+def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
+
+    if target:
+        # Check to make sure the target comes with its required arguments
+        if target == 'fairness':
+            if bias_type is None:
+                raise ValueError('Must specify a bias_type when using fairness target')
+            bias_types = ['race', 'gender', 'religion', 'profession']
+            if bias_type not in bias_types:
+                raise ValueError(f'bias_type must be one of {bias_types}')
+        if target == 'emotion':
+            if emotion_type is None:
+                raise ValueError('Must specify an emotion_type when using emotion target')
+            emotion_types = ['anger', 'disgust', 'fear', 'happiness', 'sadness', 'surprise']
+            if emotion_type not in emotion_types:
+                raise ValueError(f'emotion_type must be one of {emotion_types}')
+    
     target_map = {
         ('truth', 'conceptual'): fetch_factual_data_conceptual,
         ('honesty', 'functional'): fetch_factual_data_functional,
         ('morality', 'functional'): fetch_morality_data_functional,
         ('morality', 'conceptual'): fetch_morality_data_conceptual,
-        ('anger', 'conceptual'): fetch_emotion_data('anger'), 
-        ('disgust', 'conceptual'): fetch_emotion_data('disgust'),
-        ('fear', 'conceptual'): fetch_emotion_data('fear'), 
-        ('happiness', 'conceptual'): fetch_emotion_data('happiness'), 
-        ('sadness', 'conceptual'): fetch_emotion_data('sadness'), 
-        ('surprise', 'conceptual'): fetch_emotion_data('surprise'),
-        ('fairness', 'conceptual'): fetch_fairness_data_conceptual
+        ('emotion', 'conceptual'): fetch_emotion_data_wrapper(emotion_type), 
+        ('fairness', 'conceptual'): fetch_fairness_data_conceptual_wrapper(bias_type),
+        ('fairness', 'functional'): fetch_fairness_data_functional_wrapper(bias_type)
     }
     return target_map
 
 
-def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag):
+def prepare_statement_pairs(extraction_target, extraction_method, tokenizer, user_tag, assistant_tag, n_pairs, **kwargs):
+            
+    extraction_fn, extraction_method = get_extraction_function(extraction_target, extraction_method, **kwargs)
+    result = extraction_fn()
+    data = result.get('data')
+    prompt_maker = result.get('prompt_maker')
+    kwargs = result.get('kwargs', {})    
+    
+    if extraction_method == 'functional':
+        statement_pairs = prepare_functional_pairs(
+            data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+    elif extraction_method == 'conceptual':
+        statement_pairs = prepare_conceptual_pairs(
+            data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+
+    if n_pairs:
+        return statement_pairs[:n_pairs]
+    else:
+        return statement_pairs    
+
+def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_trim_tokens=5, stop_token=None):
     """
     Pair statements by expanding positive and negative version of a prompt (e.g. tell me a fact about..., 
     tell me a lie about...), one token a token at a time.
@@ -102,8 +130,10 @@ def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     statement_pairs = []
     statements = data['statement'].values.tolist()
     for statement in statements:
+        if stop_token:
+            statement = statement.split(stop_token)[0]    
         tokens = tokenizer.tokenize(statement)
-        for idx in range(1, len(tokens)-5):
+        for idx in range(1, len(tokens)-n_trim_tokens):
             substatement = tokenizer.convert_tokens_to_string(tokens[:idx])
             positive_statement = _prompt_maker(substatement, True, user_tag, assistant_tag)
             negative_statement = _prompt_maker(substatement, False, user_tag, assistant_tag)
@@ -112,7 +142,7 @@ def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     return statement_pairs
 
 
-def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, shuffle):
+def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, shuffle=True):
     """
     Pair statements that contain concept with statements that are missing the concept.
     """

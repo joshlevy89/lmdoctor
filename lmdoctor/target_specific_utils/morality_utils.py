@@ -8,7 +8,7 @@ def fetch_morality_data_functional():
         return prompt
         
     data = fetch_morality_data()
-    return data, _prompt_maker
+    return {'data': data, 'prompt_maker': _prompt_maker}
 
 
 def fetch_morality_data_conceptual():
@@ -17,8 +17,7 @@ def fetch_morality_data_conceptual():
         return prompt
 
     data = fetch_morality_data()
-    data = data.loc[data['is_short']]
-    return data, _prompt_maker, True
+    return {'data': data, 'prompt_maker': _prompt_maker}
 
 
 def fetch_morality_data():
@@ -27,4 +26,5 @@ def fetch_morality_data():
     data = data[['input', 'label', 'is_short']]
     data['label'] = 1 - data['label'] # flip 0s and 1s so that morality=1
     data = data.rename(columns={'input': 'statement'})
+    data = data.loc[data['is_short']]
     return data

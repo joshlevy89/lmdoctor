@@ -15,7 +15,7 @@ def fetch_factual_data_functional():
         return prompt
 
     data = fetch_factual_data()
-    return data, _prompt_maker
+    return {'data': data, 'prompt_maker': _prompt_maker}
 
 
 def fetch_factual_data_conceptual():
@@ -25,5 +25,5 @@ def fetch_factual_data_conceptual():
         return prompt
     
     data = fetch_factual_data()
-    return data, _prompt_maker, True
+    return {'data': data, 'prompt_maker': _prompt_maker}
 

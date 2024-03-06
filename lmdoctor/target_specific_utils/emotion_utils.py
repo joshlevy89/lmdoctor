@@ -16,17 +16,17 @@ def fetch_all_emotion_data():
     return data
     
 
-def fetch_emotion_data(emotion_name):
-    
-    def emotion_wrapper():
+def fetch_emotion_data_wrapper(emotion_type):
+        
+    def fetch_emotion_data():
         
         def _prompt_maker(stimulus, user_tag, assistant_tag):
             prompt = f"{user_tag} Consider the emotion in the following scenario:\nScenario: {stimulus} {assistant_tag}"
             return prompt
 
         data = fetch_all_emotion_data()
-        data['label'] = np.where(data['emotion'] == emotion_name, 1, 0)
-        return data, _prompt_maker, True
+        data['label'] = np.where(data['emotion'] == emotion_type, 1, 0)
+        return {'data': data, 'prompt_maker': _prompt_maker}
 
-    return emotion_wrapper
+    return fetch_emotion_data
 
