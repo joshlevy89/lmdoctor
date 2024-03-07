@@ -6,8 +6,8 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name='lmdoctor',
-    version='0.5.0',    
-    description='pkg for extracting and controlling concepts within language models as they generate text',
+    version='0.5.1',    
+    description='Extract, detect, and control semantic representations within language models as they read and write text',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/joshlevy89/lmdoctor',
