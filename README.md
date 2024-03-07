@@ -1,15 +1,20 @@
 # lmdoctor
-pip pkg for extracting and controlling concepts within language models as they generate text
+Extract, detect, and control semantic representations within language models as they read and write text. Built on 🤗 transformers. 
 
-built on 🤗 transformers
+[lmdoctor pip package](https://pypi.org/project/lmdoctor/)  
 
-it reads the model's activations during inference to determine how certain concepts (e.g. honesty) are representated, and how to control them.
+Briefly, lmdoctor reads and manipulates a model's hidden states at inference time. Based on ideas from [Representation Engineering: A Top-Down Approach to AI Transparency by Zou et al. 2023](https://arxiv.org/pdf/2310.01405.pdf). Their original code [here](https://github.com/andyzoujm/representation-engineering).  
 
-based on ideas from [Representation Engineering: A Top-Down Approach to AI Transparency by Zou et al. 2023](https://arxiv.org/pdf/2310.01405.pdf). their original code [here](https://github.com/andyzoujm/representation-engineering).
-
-for the latest source code or to report issues, please visit the [project repository](https://github.com/joshlevy89/lmdoctor).
+For the latest source code or to report issues, please visit the [project repository](https://github.com/joshlevy89/lmdoctor).
 
 ## Example
+
+### honesty representation extraction
+```
+from lmdoctor import extraction_utils
+extractor = extraction_utils.Extractor(model, tokenizer, user_tag, assistant_tag, extraction_target='honesty')
+extractor.find_directions()
+```
 
 ### lie detection
 
@@ -54,8 +59,23 @@ For the complete example, see [examples/honesty_example.ipynb](https://github.co
 ## Getting started
 [linux only]
 
-pip install lmdoctor
+recommended: pip install lmdoctor  
 
-Note: This package requires pytorch but does not include it because the specific version/cuda backend will depend the huggingface model you are using. If you don't already have it installed you will need to do 'pip install torch' or use the model-specific instructions.
+from source: "pip install ." after cloning
 
 After install, try running honesty_example.ipynb
+
+*Note: This package requires pytorch but does not include it because the specific version/cuda backend will depend the huggingface model you are using. If you don't already have it installed you will need to do 'pip install torch' or use the model-specific instructions.*
+
+
+## Extraction targets
+
+The table below describes the targets we support for extracting internal representations. In functional extraction, the model is asked to produce text (e.g. prompt="tell me a lie"). In conceptual extraction, the model is asked to consider a statement (e.g. "consider the truthfulness of X"). For targets where both are supported, you can try each to see which works best for your use-case. 
+
+| Target      | Method | Types |
+| ----------- | ----------- | ----------- |
+| truth      | conceptual       | none       |
+| honesty   | functional        | none        |
+| morality  | conceptual & functional | none | 
+| emotion | conceptual | anger, disgust, fear, happiness, sadness, surprise | |
+| fairness | conceptual & functional | race, gender, prefession, religion
