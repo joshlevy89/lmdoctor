@@ -1,7 +1,11 @@
 """
 Utils for extracting representations associated with a function, e.g. honesty
 """
-from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional 
+from .target_specific_utils.honesty_utils import (
+    fetch_factual_data_conceptual,
+    fetch_factual_data_functional,
+    fetch_factual_data_custom_intentional
+)
 from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
 from .target_specific_utils.emotion_utils import fetch_emotion_data_wrapper
 from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual_wrapper, fetch_fairness_data_functional_wrapper
@@ -97,30 +101,37 @@ def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
         ('morality', 'conceptual'): fetch_morality_data_conceptual,
         ('emotion', 'conceptual'): fetch_emotion_data_wrapper(emotion_type), 
         ('fairness', 'conceptual'): fetch_fairness_data_conceptual_wrapper(bias_type),
-        ('fairness', 'functional'): fetch_fairness_data_functional_wrapper(bias_type)
+        ('fairness', 'functional'): fetch_fairness_data_functional_wrapper(bias_type),
+        ('honesty', 'custom_intentional'): fetch_factual_data_custom_intentional
     }
     return target_map
 
 
 def prepare_statement_pairs(extraction_target, extraction_method, tokenizer, user_tag, assistant_tag, n_pairs, **kwargs):
-            
-    extraction_fn, extraction_method = get_extraction_function(extraction_target, extraction_method, **kwargs)
-    result = extraction_fn()
-    data = result.get('data')
-    prompt_maker = result.get('prompt_maker')
-    kwargs = result.get('kwargs', {})    
     
-    if extraction_method == 'functional':
-        statement_pairs = prepare_functional_pairs(
-            data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
-    elif extraction_method == 'conceptual':
-        statement_pairs = prepare_conceptual_pairs(
-            data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+    extraction_fn, extraction_method = get_extraction_function(extraction_target, extraction_method, **kwargs)
 
+    if 'custom' in extraction_method:
+        # custom methods directly process data
+        statement_pairs = extraction_fn(tokenizer, user_tag, assistant_tag)
+    else:
+        result = extraction_fn()
+        data = result.get('data')
+        prompt_maker = result.get('prompt_maker')
+        kwargs = result.get('kwargs', {})    
+        
+        if extraction_method == 'functional':
+            statement_pairs = prepare_functional_pairs(
+                data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+        elif extraction_method == 'conceptual':
+            statement_pairs = prepare_conceptual_pairs(
+                data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+    
     if n_pairs:
         return statement_pairs[:n_pairs]
     else:
-        return statement_pairs    
+        return statement_pairs
+
 
 def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_trim_tokens=5, stop_token=None):
     """
