@@ -41,13 +41,15 @@ class Extractor:
         self.statement_pairs = None
         self.train_act_pairs = None
         
-    def find_directions(self, batch_size=8, n_pairs=128):
+    def find_directions(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32):
         """
         n_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
         """        
         self.statement_pairs = prepare_statement_pairs(
-            self.extraction_target, self.extraction_method, self.tokenizer, self.user_tag, self.assistant_tag, n_pairs, **self.kwargs)
-        self.train_act_pairs = get_activations_for_paired_statements(self.statement_pairs, self.model, self.tokenizer, batch_size)   
+            self.extraction_target, self.extraction_method, self.tokenizer, 
+            self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs, **self.kwargs)
+        self.train_act_pairs = get_activations_for_paired_statements(
+            self.statement_pairs['train'], self.model, self.tokenizer, batch_size)   
         self.direction_info = get_directions(self.train_act_pairs)
     
 
@@ -102,7 +104,9 @@ def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
     return target_map
 
 
-def prepare_statement_pairs(extraction_target, extraction_method, tokenizer, user_tag, assistant_tag, n_pairs, **kwargs):
+def prepare_statement_pairs(
+    extraction_target, extraction_method, tokenizer, user_tag, assistant_tag, 
+    n_train_pairs=None, n_dev_pairs=None, n_test_pairs=None, **kwargs):
             
     extraction_fn, extraction_method = get_extraction_function(extraction_target, extraction_method, **kwargs)
     result = extraction_fn()
@@ -117,10 +121,17 @@ def prepare_statement_pairs(extraction_target, extraction_method, tokenizer, use
         statement_pairs = prepare_conceptual_pairs(
             data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
 
-    if n_pairs:
-        return statement_pairs[:n_pairs]
+    d = {}
+    if n_train_pairs:
+        d['train'] = statement_pairs[:n_train_pairs]
+        if n_dev_pairs:
+            d['dev'] = statement_pairs[n_train_pairs:n_train_pairs+n_dev_pairs]
+        if n_test_pairs:
+            d['test'] = statement_pairs[n_train_pairs+n_dev_pairs:n_train_pairs+n_dev_pairs+n_test_pairs]
     else:
-        return statement_pairs    
+        d['all'] = statement_pairs
+    return d
+    
 
 def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_trim_tokens=5, stop_token=None):
     """
@@ -167,10 +178,7 @@ def get_activations_for_paired_statements(statement_pairs, model, tokenizer, bat
         statements = pairs.reshape(-1)
         model_inputs = tokenizer(list(statements), padding=True, return_tensors='pt').to(device)
         with torch.no_grad():
-            try:
-                hiddens = model(**model_inputs, output_hidden_states=True)
-            except:
-                import pdb; pdb.set_trace()
+            hiddens = model(**model_inputs, output_hidden_states=True)
         for layer in range(model.config.num_hidden_layers):
             act_pairs = hiddens['hidden_states'][layer+1][:, read_token, :].view(len(pairs), 2, -1)
             layer_to_act_pairs[layer].extend(act_pairs)
@@ -178,7 +186,7 @@ def get_activations_for_paired_statements(statement_pairs, model, tokenizer, bat
     for key in layer_to_act_pairs:
         layer_to_act_pairs[key] = torch.stack(layer_to_act_pairs[key])
 
-    return layer_to_act_pairs
+    return layer_to_act_pairs  
 
 
 def get_directions(train_acts, device='cuda:0'):
