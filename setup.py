@@ -6,7 +6,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name='lmdoctor',
-    version='0.5.2',    
+    version='0.5.3',    
     description='Extract, detect, and control semantic representations within language models as they read and write text',
     long_description=long_description,
     long_description_content_type='text/markdown',
