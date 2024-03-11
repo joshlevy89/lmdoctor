@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 from pathlib import Path
 this_directory = Path(__file__).parent
@@ -14,7 +14,7 @@ setup(
     author='Josh Levy',
     author_email='joshlevy89@gmail.com',
     license='MIT',
-    packages=['lmdoctor'],
+    packages=find_packages(),
     include_package_data=True,
     install_requires=['jupyter',
                       'ipykernel',
