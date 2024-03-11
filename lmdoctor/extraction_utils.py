@@ -39,18 +39,18 @@ class Extractor:
         self.kwargs = kwargs
         self.direction_info = None
         self.statement_pairs = None
-        self.train_act_pairs = None
+        self.train_acts = None
         
     def find_directions(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32):
         """
-        n_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
+        n_train_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
         """        
         self.statement_pairs = prepare_statement_pairs(
             self.extraction_target, self.extraction_method, self.tokenizer, 
             self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs, **self.kwargs)
-        self.train_act_pairs = get_activations_for_paired_statements(
+        self.train_acts = get_activations_for_paired_statements(
             self.statement_pairs['train'], self.model, self.tokenizer, batch_size)   
-        self.direction_info = get_directions(self.train_act_pairs)
+        self.direction_info = get_directions(self.train_acts)
     
 
 def get_extraction_function(target, extraction_method=None, **kwargs):
@@ -163,7 +163,8 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     if shuffle:
         random.shuffle(missing_statements)
 
-    for i in range(len(contain_statements)):
+    n_shared = min(len(contain_statements), len(missing_statements))
+    for i in range(n_shared):
         contain_statement = _prompt_maker(contain_statements[i], user_tag, assistant_tag)
         missing_statement = _prompt_maker(missing_statements[i], user_tag, assistant_tag)
         statement_pairs.append([contain_statement, missing_statement])
