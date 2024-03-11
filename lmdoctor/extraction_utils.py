@@ -18,7 +18,7 @@ logger = setup_logger()
 
 
 class Extractor:
-    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None, **kwargs):
+    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None, device='cuda:0', **kwargs):
         """
         kwargs: Additional keyword arguments, such as:
         - bias_type (str): The type of bias to use for fairness extraction.
@@ -36,6 +36,7 @@ class Extractor:
         self.assistant_tag = assistant_tag
         self.extraction_target = extraction_target
         self.extraction_method = extraction_method
+        self.device = device
         self.kwargs = kwargs
         self.direction_info = None
         self.statement_pairs = None
@@ -49,8 +50,8 @@ class Extractor:
             self.extraction_target, self.extraction_method, self.tokenizer, 
             self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs, **self.kwargs)
         self.train_acts = get_activations_for_paired_statements(
-            self.statement_pairs['train'], self.model, self.tokenizer, batch_size)   
-        self.direction_info = get_directions(self.train_acts)
+            self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)   
+        self.direction_info = get_directions(self.train_acts, device=self.device)
     
 
 def get_extraction_function(target, extraction_method=None, **kwargs):
@@ -172,7 +173,7 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
     return statement_pairs
 
 
-def get_activations_for_paired_statements(statement_pairs, model, tokenizer, batch_size, read_token=-1, device='cuda:0'):
+def get_activations_for_paired_statements(statement_pairs, model, tokenizer, batch_size, device, read_token=-1):
     layer_to_act_pairs = defaultdict(list)
     for i in range(0, len(statement_pairs), batch_size):
         pairs = statement_pairs[i:i+batch_size]
@@ -190,7 +191,7 @@ def get_activations_for_paired_statements(statement_pairs, model, tokenizer, bat
     return layer_to_act_pairs  
 
 
-def get_directions(train_acts, device='cuda:0'):
+def get_directions(train_acts, device):
     directions = {}
     scaled_directions = {}
     mean_diffs = {}

@@ -49,7 +49,7 @@ class Detector:
         Computes the projections of hidden_states onto concept directions.
         """
         if input_text:
-            layer_to_acts = _get_layeracts_from_text(input_text, self.model, self.tokenizer)
+            layer_to_acts = _get_layeracts_from_text(input_text, self.model, self.tokenizer, self.device)
         else:
             if self.hiddens is None:
                 raise RuntimeError(
@@ -77,7 +77,8 @@ class Detector:
             return X, y
 
         
-        act_pairs = get_activations_for_paired_statements(statement_pairs, self.model, self.tokenizer, batch_size, read_token=-1)
+        act_pairs = get_activations_for_paired_statements(
+            statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
         X, y = _create_projection_dataset(act_pairs, direction_info, len(statement_pairs))
 
         # train
@@ -88,7 +89,7 @@ class Detector:
 
         if test_statement_pairs is not None:
             test_act_pairs = get_activations_for_paired_statements(
-                test_statement_pairs, self.model, self.tokenizer, batch_size, read_token=-1)
+                test_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
             X_test, y_test = _create_projection_dataset(test_act_pairs, direction_info, len(test_statement_pairs))
             acc = clf.score(X_test, y_test)
             logger.info(f'Classifier acc on test set: {acc}')
@@ -198,13 +199,13 @@ def _get_layeracts_from_hiddens(hiddens):
     return layer_to_acts
 
 
-def get_layeracts_from_text(input_text, model, tokenizer):
+def get_layeracts_from_text(input_text, model, tokenizer, device):
     """
     Get activations per layer from the generated text (which includes prompt). 
     This requires re-running the bc the model was already used to generate the text.
     Useful if just have the text (and not the hiddens produced during generation).
     """
-    model_inputs = self.tokenizer(input_text, return_tensors='pt').to(self.device)
+    model_inputs = self.tokenizer(input_text, return_tensors='pt').to(device)
     
     layer_to_acts = {}
     with torch.no_grad():
