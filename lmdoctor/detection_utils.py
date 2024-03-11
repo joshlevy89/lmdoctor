@@ -1,6 +1,11 @@
 import torch
 from collections import defaultdict
 from .utils import format_prompt
+from .extraction_utils import get_activations_for_paired_statements
+from sklearn.linear_model import LogisticRegression
+import numpy as np       
+from .utils import setup_logger
+logger = setup_logger()
 
 class Detector:
     """
@@ -37,38 +42,89 @@ class Detector:
             self.hiddens = output.hidden_states
 
         output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-
         return output_text
     
     def get_projections(self, direction_info, input_text=None):
         """
         Computes the projections of hidden_states onto concept directions.
         """
-        directions = direction_info['directions']
-        mean_diffs = direction_info['mean_diffs']
-        
         if input_text:
             layer_to_acts = _get_layeracts_from_text(input_text, self.model, self.tokenizer)
         else:
             if self.hiddens is None:
-                raise RuntimeError('Missing hidden states. Must either run generate method before calling get_projections OR provide an input_text')
+                raise RuntimeError(
+                    'Missing hidden states. Must either run generate method before calling get_projections OR provide an input_text')
             layer_to_acts = _get_layeracts_from_hiddens(self.hiddens)
 
-        all_projs = []
-        for layer in layer_to_acts:
-            projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer], layer=layer)
-            all_projs.append(projs)
-        self.all_projs = torch.stack(all_projs)
+        self.all_projs = layeracts_to_projs(layer_to_acts, direction_info)
         return self.all_projs
 
-    def detect(self, layers_to_use=None, use_n_middle_layers=None):
+    
+    def tune(self, statement_pairs, direction_info, batch_size=8, test_statement_pairs=None):
+        """
+        Train a classifier to learn how to weigh the layer contributions at a given token when performing detection.
+        To do this, statement_pairs consisting of one positive (e.g. honesty) and one negative (e.g. dishonesty) sample
+        are fed to the model to get hidden_states from the last token of each statement. These hidden_states are then projected
+        onto the direction vector for that layer (maps hidden_dim -> scalar). The projections across all layers are then fed 
+        into the classifier. Thus, each sample consists of as many projections (scalars) as there are layers, and the label is
+        determined by whether it is a positive or negative statement.
+        """
+        def _create_projection_dataset(act_pairs, direction_info, n_pairs):
+            proj_pairs = act_pairs_to_projs(act_pairs, direction_info, n_pairs)
+            proj_pairs = proj_pairs.view(-1, proj_pairs.shape[2]) # stack pos and negative samples
+            X = proj_pairs.detach().cpu().numpy()
+            y = np.array([1] * n_pairs + [0] * n_pairs)
+            return X, y
+
+        
+        act_pairs = get_activations_for_paired_statements(statement_pairs, self.model, self.tokenizer, batch_size, read_token=-1)
+        X, y = _create_projection_dataset(act_pairs, direction_info, len(statement_pairs))
+
+        # train
+        clf = LogisticRegression()
+        clf.fit(X, y)
+        acc = clf.score(X, y)
+        logger.info(f'Classifier acc on dev set: {acc}')
+
+        if test_statement_pairs is not None:
+            test_act_pairs = get_activations_for_paired_statements(
+                test_statement_pairs, self.model, self.tokenizer, batch_size, read_token=-1)
+            X_test, y_test = _create_projection_dataset(test_act_pairs, direction_info, len(test_statement_pairs))
+            acc = clf.score(X_test, y_test)
+            logger.info(f'Classifier acc on test set: {acc}')
+
+        return clf
+
+
+    def detect(self, classifier=None, layers_to_use=None, use_n_middle_layers=None):
+        if classifier:
+            return self.detect_by_classifier(classifier)
+        else:
+            logger.warning('It is generally recommended to use detect_by_classifier instead of detect_by_layer_avg.'
+                           ' To do so, use self.tune() to train a classifier and then pass the classifier to detect.')
+            return self.detect_by_layer_avg(layers_to_use, use_n_middle_layers)
+        
+
+    def detect_by_classifier(self, clf):
+        """
+        For each token in proj, run a classifier over all layers to get the score
+        """
+        n_tokens = self.all_projs.shape[1]
+        scores = []
+        for i in range(n_tokens):
+            layer_vals = self.all_projs[:, i].detach().cpu().numpy()
+            score = clf.predict_proba(layer_vals.reshape(1, -1))[0][1] # prob of label=1
+            scores.append(score)
+        return np.array([scores])
+    
+    
+    def detect_by_layer_avg(self, layers_to_use=None, use_n_middle_layers=None):
         """
         Logic for aggregating over layers to score tokens for degree of lying. 
         set one of:
             layers_to_use: -1 (all layers) or [start_layer, end_layer]
             use_n_middle_layers: number of middle layers to use
-        """        
-        
+        """                
         if layers_to_use:
             if use_n_middle_layers:
                 raise ValueError('Either specify layers_to_use or use_n_middle_layers, not both')
@@ -98,6 +154,31 @@ def do_projections(acts, direction, mean_diff, center=True, layer=None):
         acts = (acts - mean_diff).clone()
     projections =  acts @ direction / direction.norm() # taking norm
     return projections
+
+def layeracts_to_projs(layer_to_acts, direction_info):
+    directions = direction_info['directions']
+    mean_diffs = direction_info['mean_diffs']
+    
+    all_projs = []
+    for layer in layer_to_acts:
+        projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer], layer=layer)
+        all_projs.append(projs)
+    all_projs = torch.stack(all_projs)
+    return all_projs
+
+def act_pairs_to_projs(act_pairs, direction_info, n_pairs):
+    
+    directions = direction_info['directions']
+    mean_diffs = direction_info['mean_diffs']
+
+    num_layers = len(act_pairs)
+    proj_pairs = torch.zeros((2, n_pairs, num_layers))
+    for i, layer in enumerate(act_pairs):
+        pos_projs = do_projections(act_pairs[layer][:, 0, :], directions[layer], mean_diffs[layer], layer=layer)
+        neg_projs = do_projections(act_pairs[layer][:, 1, :], directions[layer], mean_diffs[layer], layer=layer)
+        proj_pairs[0, :, i] = pos_projs
+        proj_pairs[1, :, i] = neg_projs
+    return proj_pairs
 
 
 def _get_layeracts_from_hiddens(hiddens):

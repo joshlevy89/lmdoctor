@@ -24,7 +24,8 @@ def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=0, saturate_
     
     fig.show()
 
-def plot_scores_per_token(readings, tokens, lastn_tokens_to_plot=0, saturate_at=None):
+
+def plot_scores_per_token(readings, tokens, lastn_tokens_to_plot=0, detection_method=None, saturate_at=None):
     """
     Scores (e.g. lie detection scores) per token.
     """
@@ -32,13 +33,17 @@ def plot_scores_per_token(readings, tokens, lastn_tokens_to_plot=0, saturate_at=
     plot_tokens = tokens[-lastn_tokens_to_plot:]
     
     fig = px.imshow(plot_data, color_continuous_scale='RdYlGn', labels=dict(x="Token"))
-    if saturate_at:
-        fig.update_coloraxes(cmin=-saturate_at, cmax=saturate_at)
+
+    if detection_method == 'classifier':
+        fig.update_coloraxes(cmin=0, cmax=1)
     else:
-        min_val = plot_data.min()
-        max_val = plot_data.max()
-        max_range = max(abs(min_val), abs(max_val))
-        fig.update_coloraxes(cmin=-max_range, cmax=max_range)
+        if saturate_at:
+            fig.update_coloraxes(cmin=-1, cmax=1)
+        else:
+            min_val = plot_data.min()
+            max_val = plot_data.max()
+            max_range = max(abs(min_val), abs(max_val))
+            fig.update_coloraxes(cmin=-max_range, cmax=max_range)
     
     fig.update_xaxes(
         tickvals=list(range(len(plot_tokens))),
