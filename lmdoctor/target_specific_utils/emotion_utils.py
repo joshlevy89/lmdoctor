@@ -21,7 +21,7 @@ def fetch_emotion_data_wrapper(emotion_type):
     def fetch_emotion_data():
         
         def _prompt_maker(stimulus, user_tag, assistant_tag):
-            prompt = f"{user_tag} Consider the emotion in the following scenario:\nScenario: {stimulus} {assistant_tag}"
+            prompt = f"{user_tag}Consider the emotion in the following scenario:\nScenario: {stimulus}{assistant_tag}"
             return prompt
 
         data = fetch_all_emotion_data()
