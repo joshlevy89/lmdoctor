@@ -208,7 +208,8 @@ def get_directions(train_acts, device):
         centered_diffs = diffs - mean_diffs[layer] # is centering necessary?
         pca = PCA(n_components=1)
         pca.fit(centered_diffs.detach().cpu())
-        direction = torch.tensor(pca.components_[0], dtype=torch.float16).to(device)
+        centered_diffs.dtype
+        direction = torch.tensor(pca.components_[0], dtype=centered_diffs.dtype).to(device)
         directions[layer] = direction 
         
         # scale direction such that p(mu_a + scaled_direction) = p(mu_b), following marks et al. (https://arxiv.org/abs/2310.06824)
