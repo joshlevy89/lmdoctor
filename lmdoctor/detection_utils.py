@@ -101,8 +101,6 @@ class Detector:
         if classifier:
             return self.detect_by_classifier(classifier)
         else:
-            logger.warning('It is generally recommended to use detect_by_classifier instead of detect_by_layer_avg.'
-                           ' To do so, use self.tune() to train a classifier and then pass the classifier to detect.')
             return self.detect_by_layer_avg(layers_to_use, use_n_middle_layers)
         
 
