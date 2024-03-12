@@ -5,15 +5,17 @@ class Controller:
     Wrapper around model that enables it to control generation by manipulating representation of
     concepts at inference time. 
     """
-    def __init__(self, direction_info, model, tokenizer, user_tag, assistant_tag, device='cuda:0'):
+    def __init__(self, direction_info, model, tokenizer, user_tag, assistant_tag, device='cuda:0', transformer_layers=None):
         self.model = model
         self.tokenizer = tokenizer
         self.user_tag = user_tag
         self.assistant_tag = assistant_tag
         self.directions = direction_info['directions']
+        if transformer_layers is None:
+            self.transformer_layers = self.get_transformer_layers()
 
     def _clear_hooks(self, model):
-        for module in model.model.layers:
+        for module in self.transformer_layers:
             module._forward_hooks.clear()
     
     def generate(self, prompt, control_direction=None, n_trim_layers=10, alpha=1, **kwargs):
@@ -33,13 +35,14 @@ class Controller:
         for layer in layers:
             def hook(m, inp, op):
                 if op[0].shape[1] > 1:
-                    # Doesn't effect the text produced, but as a good practice, this will skip over the input prompt (which is passed as a group of tokens)
+                    # Doesn't effect the text produced, but as a good practice, 
+                    # this will skip over the input prompt (which is passed as a group of tokens)
                     return op
                 op[0][0, 0, :] += alpha * self.directions[layer] / self.directions[layer].norm()  * control_direction
                 return op
             # per https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L710, 
             # the first value in module output (used in hook) is the input to the layer
-            h = self.model.model.layers[layer].register_forward_hook(hook)
+            h = self.transformer_layers[layer].register_forward_hook(hook)
             
         # generate after hooks have been
         prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
@@ -49,5 +52,18 @@ class Controller:
         self._clear_hooks(self.model)
         return text
 
+    
+    def get_transformer_layers(self):
+        try:
+            return self.model.model.layers # mistral and llama
+        except:
+            try:
+                return self.model.transformer.h # gpt-2
+            except:
+                raise ValueError('Could not locate the transformer layers module list within model. Can pass the module' \
+                                 'directly with transformer_layers when instantiating controller')
+
     def __getattr__(self, name):
         return getattr(self.model, name)
+        
+    
