@@ -198,7 +198,7 @@ def get_directions(train_acts, device):
     direction_info = defaultdict(dict)
     for layer in train_acts:
         act_pairs = train_acts[layer]
-        shuffled_pairs = [] # shuffling train labels before pca useful for some reason 
+        shuffled_pairs = [] # must shuffle pairs to create variability in difference between pairs
         for pair in act_pairs:
             pair = pair[torch.randperm(2)]
             shuffled_pairs.append(pair)
