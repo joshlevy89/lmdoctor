@@ -5,7 +5,7 @@ from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, 
 from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
 from .target_specific_utils.emotion_utils import fetch_emotion_data_wrapper
 from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual_wrapper, fetch_fairness_data_functional_wrapper
-
+from .plot_utils import plot_projection_heatmap, plot_scores_per_token
 
 import numpy as np
 from collections import defaultdict

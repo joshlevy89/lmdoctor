@@ -21,14 +21,15 @@ class Detector:
         self.hiddens = None
         self.all_projs = None
     
-    def generate(self, prompt, gen_only=False, **kwargs):
+    def generate(self, prompt, gen_only=False, should_format_prompt=True, **kwargs):
         """
         If gen only, get hiddens/text for newly generated text only (i.e. exclude prompt)
         """
         kwargs['return_dict_in_generate'] = True
         kwargs['output_hidden_states'] = True
 
-        prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
+        if should_format_prompt:
+            prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
         model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
         
         with torch.no_grad():
@@ -148,10 +149,13 @@ class Detector:
         return getattr(self.model, name)
 
 
-def do_projections(acts, direction, mean_diff, center=True, layer=None):
+def do_projections(acts, direction, mean_diff, center=True, normalize_direction=True):
     if center:
         acts = (acts - mean_diff).clone()
-    projections =  acts @ direction / direction.norm() # taking norm
+    if normalize_direction:
+        projections =  acts @ direction / direction.norm() 
+    else:
+        projections =  acts @ direction
     return projections
 
 def layeracts_to_projs(layer_to_acts, direction_info):
@@ -160,12 +164,12 @@ def layeracts_to_projs(layer_to_acts, direction_info):
     
     all_projs = []
     for layer in layer_to_acts:
-        projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer], layer=layer)
+        projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer])
         all_projs.append(projs)
     all_projs = torch.stack(all_projs)
     return all_projs
 
-def act_pairs_to_projs(act_pairs, direction_info, n_pairs):
+def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=True):
     
     directions = direction_info['directions']
     mean_diffs = direction_info['mean_diffs']
@@ -173,8 +177,10 @@ def act_pairs_to_projs(act_pairs, direction_info, n_pairs):
     num_layers = len(act_pairs)
     proj_pairs = torch.zeros((2, n_pairs, num_layers))
     for i, layer in enumerate(act_pairs):
-        pos_projs = do_projections(act_pairs[layer][:, 0, :], directions[layer], mean_diffs[layer], layer=layer)
-        neg_projs = do_projections(act_pairs[layer][:, 1, :], directions[layer], mean_diffs[layer], layer=layer)
+        pos_projs = do_projections(
+            act_pairs[layer][:, 0, :], directions[layer], mean_diffs[layer], normalize_direction=normalize_direction)
+        neg_projs = do_projections(
+            act_pairs[layer][:, 1, :], directions[layer], mean_diffs[layer], normalize_direction=normalize_direction)
         proj_pairs[0, :, i] = pos_projs
         proj_pairs[1, :, i] = neg_projs
     return proj_pairs
