@@ -14,15 +14,19 @@ class Detector:
     Wraps model in order to capture hidden_states during generation and perform computations with those hidden_states.
     Specific detectors (e.g. LieDetector) inherit from it. 
     """
-    def __init__(self, model, tokenizer, user_tag, assistant_tag, device='cuda:0'):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.user_tag = user_tag
-        self.assistant_tag = assistant_tag
-        self.device = device
+    def __init__(self, extractor):
+        self.model = extractor.model
+        self.tokenizer = extractor.tokenizer
+        self.user_tag = extractor.user_tag
+        self.assistant_tag = extractor.assistant_tag
+        self.device = extractor.device
+        self.direction_info = extractor.direction_info
+        self.extractor = extractor
         self.hiddens = None
         self.all_projs = None
-        self.auto_saturate_at = None
+        self.auto_saturate_at = None # for heatmap
+        self.layer_aggregation_clf = None # aggregation for detection
+    
     
     def generate(self, prompt, gen_only=False, should_format_prompt=True, **kwargs):
         """
@@ -48,7 +52,7 @@ class Detector:
         output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         return output_text
     
-    def get_projections(self, direction_info, input_text=None):
+    def get_projections(self, input_text=None):
         """
         Computes the projections of hidden_states onto concept directions.
         """
@@ -60,11 +64,11 @@ class Detector:
                     'Missing hidden states. Must either run generate method before calling get_projections OR provide an input_text')
             layer_to_acts = _get_layeracts_from_hiddens(self.hiddens)
 
-        self.all_projs = layeracts_to_projs(layer_to_acts, direction_info)
+        self.all_projs = layeracts_to_projs(layer_to_acts, self.direction_info)
         return self.all_projs
 
     
-    def tune(self, statement_pairs, direction_info, batch_size=8, test_statement_pairs=None):
+    def tune(self, batch_size=8, run_test=True):
         """
         Train a classifier to learn how to weigh the layer contributions at a given token when performing detection.
         To do this, statement_pairs consisting of one positive (e.g. honesty) and one negative (e.g. dishonesty) sample
@@ -79,11 +83,11 @@ class Detector:
             X = proj_pairs.detach().cpu().numpy()
             y = np.array([1] * n_pairs + [0] * n_pairs)
             return X, y
-
         
+        dev_statement_pairs = self.extractor.statement_pairs['dev']
         act_pairs = get_activations_for_paired_statements(
-            statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
-        X, y = _create_projection_dataset(act_pairs, direction_info, len(statement_pairs))
+            dev_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+        X, y = _create_projection_dataset(act_pairs, self.direction_info, len(dev_statement_pairs))
 
         # train
         clf = LogisticRegression()
@@ -91,19 +95,32 @@ class Detector:
         acc = clf.score(X, y)
         logger.info(f'Classifier acc on dev set: {acc}')
 
-        if test_statement_pairs is not None:
+        if run_test:
+            test_statement_pairs = self.extractor.statement_pairs['test']
             test_act_pairs = get_activations_for_paired_statements(
                 test_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
-            X_test, y_test = _create_projection_dataset(test_act_pairs, direction_info, len(test_statement_pairs))
+            X_test, y_test = _create_projection_dataset(test_act_pairs, self.direction_info, len(test_statement_pairs))
             acc = clf.score(X_test, y_test)
             logger.info(f'Classifier acc on test set: {acc}')
 
-        return clf
+        self.layer_aggregation_clf = clf
 
 
-    def detect(self, classifier=None, layers_to_use=None, use_n_middle_layers=None):
-        if classifier:
-            return self.detect_by_classifier(classifier)
+    def detect(self, auto_aggregate=False, layers_to_use=None, use_n_middle_layers=None):
+        
+        if self.all_projs is None:
+            raise RuntimeError('Must generate before detecting!')
+        
+        if not auto_aggregate and not layers_to_use and not use_n_middle_layers:
+            raise RuntimeError('Must specify some aggregation method for detect')
+        
+        if auto_aggregate:
+            if auto_aggregate and self.layer_aggregation_clf is None:
+                logger.info('Running one-time aggregation tuning, since auto_aggregate=True and' \
+                            ' no self.layer_aggregation_clf is set...')
+                self.tune()
+                logger.info('Tuning complete.')
+            return self.detect_by_classifier(self.layer_aggregation_clf)
         else:
             return self.detect_by_layer_avg(layers_to_use, use_n_middle_layers)
         
@@ -152,9 +169,7 @@ class Detector:
     def plot_projection_heatmap(self, all_projs, tokens, **kwargs):
         if 'saturate_at' in kwargs and kwargs['saturate_at'] == 'auto':
             if self.auto_saturate_at is None:
-                if 'extractor' not in kwargs:
-                    raise RuntimeError('Must pass extractor when saturate_at="auto"')
-                self.auto_saturate_at = auto_compute_saturation(kwargs['extractor'])
+                self.auto_saturate_at = auto_compute_saturation(self.extractor)
                 kwargs['saturate_at'] = self.auto_saturate_at
             else:
                 kwargs['saturate_at'] = self.auto_saturate_at
@@ -162,14 +177,17 @@ class Detector:
                 
         plot_projection_heatmap(all_projs, tokens, **kwargs)
         
+        
+    def plot_scores_per_token(self, scores_per_token, tokens, **kwargs):
+        plot_scores_per_token(scores_per_token, tokens, **kwargs)
+        
     
     def __getattr__(self, name):
         return getattr(self.model, name)
 
     
 def auto_compute_saturation(extractor, percentile=25):
-    proj_pairs = act_pairs_to_projs(
-        extractor.train_acts, extractor.direction_info, len(extractor.statement_pairs['train']))
+    proj_pairs = act_pairs_to_projs(extractor.train_acts, extractor.direction_info, len(extractor.statement_pairs['train']))
     perc = np.percentile(proj_pairs[1, :, :].view(-1), percentile)
     saturate_at = abs(perc)
     logger.info(f'Auto setting saturate_at to {saturate_at}, which will be used for current and'
