@@ -1,4 +1,5 @@
 import plotly.express as px
+import numpy as np
 
 def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=0, saturate_at=3, figsize=(1000,600)):
     """
@@ -12,10 +13,8 @@ def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=0, saturate_
     if saturate_at is not None:
         if saturate_at == -1:
             # set the max and min based on largest value in data
-            min_val = plot_data.min()
-            max_val = plot_data.max()
-            max_range = max(abs(min_val), abs(max_val))
-            fig.update_coloraxes(cmin=-max_range, cmax=max_range)
+            absmax = np.max(np.abs(plot_data))
+            fig.update_coloraxes(cmin=-absmax, cmax=absmax)
         else:
             fig.update_coloraxes(cmin=-saturate_at, cmax=saturate_at)
         
@@ -31,9 +30,10 @@ def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=0, saturate_
     )
     
     fig.show()
+    
 
 
-def plot_scores_per_token(readings, tokens, lastn_tokens_to_plot=0, detection_method=None, saturate_at=None):
+def plot_scores_per_token(readings, tokens, lastn_tokens_to_plot=0, detection_method=None, saturate_at=1):
     """
     Scores (e.g. lie detection scores) per token.
     """
@@ -48,10 +48,8 @@ def plot_scores_per_token(readings, tokens, lastn_tokens_to_plot=0, detection_me
         if saturate_at is not None:
             if saturate_at == -1:
                 # set the max and min based on largest value in data
-                min_val = plot_data.min()
-                max_val = plot_data.max()
-                max_range = max(abs(min_val), abs(max_val))
-                fig.update_coloraxes(cmin=-max_range, cmax=max_range)
+                absmax = np.max(np.abs(plot_data))
+                fig.update_coloraxes(cmin=-absmax, cmax=absmax)
             else:
                 fig.update_coloraxes(cmin=-saturate_at, cmax=saturate_at)
     
