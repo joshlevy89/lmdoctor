@@ -14,7 +14,7 @@ class Detector:
     Wraps model in order to capture hidden_states during generation and perform computations with those hidden_states.
     Specific detectors (e.g. LieDetector) inherit from it. 
     """
-    def __init__(self, extractor):
+    def __init__(self, extractor, device='cuda:0'):
         self.model = extractor.model
         self.tokenizer = extractor.tokenizer
         self.user_tag = extractor.user_tag
@@ -166,7 +166,7 @@ class Detector:
         return layer_avg
     
     
-    def plot_projection_heatmap(self, all_projs, tokens, **kwargs):
+    def plot_projection_heatmap(self, all_projs, tokens, saturate_at='auto', **kwargs):
         if 'saturate_at' in kwargs and kwargs['saturate_at'] == 'auto':
             if self.auto_saturate_at is None:
                 self.auto_saturate_at = auto_compute_saturation(self.extractor)
