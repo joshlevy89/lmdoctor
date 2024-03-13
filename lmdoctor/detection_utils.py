@@ -6,6 +6,8 @@ from sklearn.linear_model import LogisticRegression
 import numpy as np       
 from .utils import setup_logger
 logger = setup_logger()
+from .plot_utils import plot_projection_heatmap, plot_scores_per_token
+
 
 class Detector:
     """
@@ -20,6 +22,7 @@ class Detector:
         self.device = device
         self.hiddens = None
         self.all_projs = None
+        self.auto_saturate_at = None
     
     def generate(self, prompt, gen_only=False, should_format_prompt=True, **kwargs):
         """
@@ -145,9 +148,34 @@ class Detector:
         layer_avg = layer_avg.reshape(1, -1)
         return layer_avg
     
+    
+    def plot_projection_heatmap(self, all_projs, tokens, **kwargs):
+        if 'saturate_at' in kwargs and kwargs['saturate_at'] == 'auto':
+            if self.auto_saturate_at is None:
+                if 'extractor' not in kwargs:
+                    raise RuntimeError('Must pass extractor when saturate_at="auto"')
+                self.auto_saturate_at = auto_compute_saturation(kwargs['extractor'])
+                kwargs['saturate_at'] = self.auto_saturate_at
+            else:
+                kwargs['saturate_at'] = self.auto_saturate_at
+                
+                
+        plot_projection_heatmap(all_projs, tokens, **kwargs)
+        
+    
     def __getattr__(self, name):
         return getattr(self.model, name)
 
+    
+def auto_compute_saturation(extractor, percentile=25):
+    proj_pairs = act_pairs_to_projs(
+        extractor.train_acts, extractor.direction_info, len(extractor.statement_pairs['train']))
+    perc = np.percentile(proj_pairs[1, :, :].view(-1), percentile)
+    saturate_at = abs(perc)
+    logger.info(f'Auto setting saturate_at to {saturate_at}, which will be used for current and'
+                ' future detections with this detector') 
+    return saturate_at
+    
 
 def do_projections(acts, direction, mean_diff, center=True, normalize_direction=True):
     if center:

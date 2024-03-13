@@ -2,7 +2,7 @@ import plotly.express as px
 import numpy as np
 import pandas as pd
 
-def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, saturate_at=3, figsize=(1000,600)):
+def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, saturate_at=3, figsize=(1000,600), extractor=None):
     """
     Projections by token/layer
     saturate_at ensures that large values don't dominate and can be adjusted. To get raw view, set to None.
@@ -16,9 +16,7 @@ def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, satura
     
     fig = px.imshow(plot_data, color_continuous_scale='RdYlGn', labels=dict(x="Token"))
     if saturate_at is not None:
-        if saturate_at == 'auto':
-            pass
-        elif saturate_at == -1:
+        if saturate_at == -1:
             # set the max and min based on largest value in data
             absmax = np.max(np.abs(plot_data))
             fig.update_coloraxes(cmin=-absmax, cmax=absmax)
