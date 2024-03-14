@@ -12,8 +12,9 @@ For the latest source code or to report issues, please visit the [project reposi
 
 ## Example
 
-### honesty representation extraction
+### honesty extraction
 ```
+# Create extractor
 from lmdoctor import extraction_utils
 extractor = extraction_utils.Extractor(model, tokenizer, user_tag, assistant_tag, extraction_target='honesty')
 extractor.find_directions()
@@ -22,7 +23,7 @@ extractor.find_directions()
 ### lie detection
 
 ```
-# Create lie detector
+# Create detector
 from lmdoctor import detection_utils
 ld = detection_utils.Detector(extractor)
 ```
