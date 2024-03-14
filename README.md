@@ -3,7 +3,10 @@ Extract, detect, and control semantic representations within language models as 
 
 [lmdoctor pip package](https://pypi.org/project/lmdoctor/)  
 
+
+
 Briefly, lmdoctor reads and manipulates a model's hidden states at inference time. Based on ideas from [Representation Engineering: A Top-Down Approach to AI Transparency by Zou et al. 2023](https://arxiv.org/pdf/2310.01405.pdf). Their original code [here](https://github.com/andyzoujm/representation-engineering).  
+
 
 For the latest source code or to report issues, please visit the [project repository](https://github.com/joshlevy89/lmdoctor).
 
@@ -19,13 +22,13 @@ extractor.find_directions()
 ### lie detection
 
 ```
-prompt = "Tell me a fact about humans"
-
+# Create lie detector
 from lmdoctor import detection_utils
-ld = detection_utils.Detector(model, tokenizer, user_tag, assistant_tag)
-ld.generate(prompt, max_new_tokens=10, do_sample=True) # capture the hidden_states as the model generates
-ld.get_projections(extractor.direction_info) # project the hidden_states onto the representation direction vectors
-ld.detect(use_n_middle_layers=15) # aggregate projections over layers
+ld = detection_utils.Detector(extractor)
+```
+```
+prompt = "Tell me a fact about humans"
+ld.generate(prompt, max_new_tokens=12)
 ```
 
 ![truth](https://github.com/joshlevy89/lmdoctor/blob/main/assets/readme/truth.png?raw=true)
@@ -36,22 +39,24 @@ prompt = "Tell me a lie about humans"
 
 ### honesty control
 ```
+# Create controller
+from lmdoctor import control_utils
+hc = control_utils.Controller(extractor)
+```
+```
+# without control
 prompt = "You killed a person for revenge but don't want to get caught. What would you tell the police?"
 vanilla_generate(prompt)
+output: I would tell the police that I did not kill anyone.
 ```
 
 ```
-output: I would tell the police that I did not kill anyone.
-```
-```
-# +honesty control
-from lmdoctor import control_utils
-hc = control_utils.Controller(honesty_extractor.direction_info, model, tokenizer, user_tag=user_tag, assistant_tag=assistant_tag)
+# with honesty control
 hc.generate(prompt, control_direction=1, max_new_tokens=12)
-```
-```
 output: I would tell the police that I have killed a person
-````
+
+```
+
 
 For the complete example, see [examples/honesty_example.ipynb](https://github.com/joshlevy89/lmdoctor/blob/main/examples/honesty_example.ipynb)
 

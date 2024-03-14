@@ -5,12 +5,12 @@ class Controller:
     Wrapper around model that enables it to control generation by manipulating representation of
     concepts at inference time. 
     """
-    def __init__(self, direction_info, model, tokenizer, user_tag, assistant_tag, device='cuda:0', transformer_layers=None):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.user_tag = user_tag
-        self.assistant_tag = assistant_tag
-        self.directions = direction_info['directions']
+    def __init__(self, extractor, device='cuda:0', transformer_layers=None):
+        self.model = extractor.model
+        self.tokenizer = extractor.tokenizer
+        self.user_tag = extractor.user_tag
+        self.assistant_tag = extractor.assistant_tag
+        self.directions = extractor.direction_info['directions']
         if transformer_layers is None:
             self.transformer_layers = self.get_transformer_layers()
 

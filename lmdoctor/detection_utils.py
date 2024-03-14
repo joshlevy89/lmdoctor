@@ -22,15 +22,13 @@ class Detector:
         self.device = extractor.device
         self.direction_info = extractor.direction_info
         self.extractor = extractor
-        self.hiddens = None
-        self.all_projs = None
         self.auto_saturate_at = None # for heatmap
         self.layer_aggregation_clf = None # aggregation for detection
     
     
-    def generate(self, prompt, gen_only=False, should_format_prompt=True, **kwargs):
+    def generate(self, prompt, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
         """
-        If gen only, get hiddens/text for newly generated text only (i.e. exclude prompt)
+        If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
         """
         kwargs['return_dict_in_generate'] = True
         kwargs['output_hidden_states'] = True
@@ -44,28 +42,30 @@ class Detector:
         
         if gen_only:
             sequences = output.sequences[:, model_inputs.input_ids.shape[1]:]
-            self.hiddens = output.hidden_states[1:]
+            hiddens = output.hidden_states[1:]
         else:
             sequences = output.sequences
-            self.hiddens = output.hidden_states
+            hiddens = output.hidden_states
 
         output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        return output_text
+
+        if return_projections:
+            all_projs = self.get_projections(hiddens)
+            return {'text': output_text, 'projections': all_projs}
+        else:
+            return {'text': output_text}
     
-    def get_projections(self, input_text=None):
+    def get_projections(self, hiddens=None, input_text=None):
         """
         Computes the projections of hidden_states onto concept directions.
-        """
+        """        
         if input_text:
             layer_to_acts = _get_layeracts_from_text(input_text, self.model, self.tokenizer, self.device)
         else:
-            if self.hiddens is None:
-                raise RuntimeError(
-                    'Missing hidden states. Must either run generate method before calling get_projections OR provide an input_text')
-            layer_to_acts = _get_layeracts_from_hiddens(self.hiddens)
+            layer_to_acts = _get_layeracts_from_hiddens(hiddens)
 
-        self.all_projs = layeracts_to_projs(layer_to_acts, self.direction_info)
-        return self.all_projs
+        all_projs = layeracts_to_projs(layer_to_acts, self.direction_info)
+        return all_projs
 
     
     def tune(self, batch_size=8, run_test=True):
@@ -106,48 +106,49 @@ class Detector:
         self.layer_aggregation_clf = clf
 
 
-    def detect(self, auto_aggregate=False, layers_to_use=None, use_n_middle_layers=None):
+    def detect(self, all_projs, aggregation_method=None, layers_to_use=None, use_n_middle_layers=None):
         
-        if self.all_projs is None:
-            raise RuntimeError('Must generate before detecting!')
+        if not aggregation_method:
+            raise RuntimeError('Must specify an aggregation method for detect')
         
-        if not auto_aggregate and not layers_to_use and not use_n_middle_layers:
-            raise RuntimeError('Must specify some aggregation method for detect')
-        
-        if auto_aggregate:
-            if auto_aggregate and self.layer_aggregation_clf is None:
-                logger.info('Running one-time aggregation tuning, since auto_aggregate=True and' \
-                            ' no self.layer_aggregation_clf is set...')
+        if aggregation_method == 'auto':
+            if self.layer_aggregation_clf is None:
+                logger.info('Running one-time aggregation tuning, since aggregation_method="auto" and' \
+                            ' self.layer_aggregation_clf is not set...')
                 self.tune()
                 logger.info('Tuning complete.')
-            return self.detect_by_classifier(self.layer_aggregation_clf)
-        else:
-            return self.detect_by_layer_avg(layers_to_use, use_n_middle_layers)
+            return self.detect_by_classifier(all_projs, self.layer_aggregation_clf)
+        elif aggregation_method == 'layer_avg':
+            return self.detect_by_layer_avg(all_projs, layers_to_use, use_n_middle_layers)
         
 
-    def detect_by_classifier(self, clf):
+    def detect_by_classifier(self, all_projs, clf):
         """
         For each token in proj, run a classifier over all layers to get the score
         """
-        n_tokens = self.all_projs.shape[1]
+        n_tokens = all_projs.shape[1]
         scores = []
         for i in range(n_tokens):
-            layer_vals = self.all_projs[:, i].detach().cpu().numpy()
+            layer_vals = all_projs[:, i].detach().cpu().numpy()
             score = clf.predict_proba(layer_vals.reshape(1, -1))[0][1] # prob of label=1
             scores.append(score)
         return np.array([scores])
     
     
-    def detect_by_layer_avg(self, layers_to_use=None, use_n_middle_layers=None):
+    def detect_by_layer_avg(self, all_projs, layers_to_use=None, use_n_middle_layers=None):
         """
         Logic for aggregating over layers to score tokens for degree of lying. 
         set one of:
             layers_to_use: -1 (all layers) or [start_layer, end_layer]
             use_n_middle_layers: number of middle layers to use
         """                
+
+        if not layers_to_use and not use_n_middle_layers:
+            raise ValueError('Must specify either layers_to_use or use_n_middle_layers when using detect_by_layer_avg') 
+        if layers_to_use and use_n_middle_layers:
+            raise ValueError('Either specify layers_to_use or use_n_middle_layers, not both')
+            
         if layers_to_use:
-            if use_n_middle_layers:
-                raise ValueError('Either specify layers_to_use or use_n_middle_layers, not both')
             if layers_to_use == -1:
                 layers_to_use = range(0, self.model.config.num_hidden_layers)
             else:
@@ -157,10 +158,8 @@ class Detector:
             mid = n_layers // 2
             diff = use_n_middle_layers // 2
             layers_to_use = range(max(0, mid - diff), min(mid + diff, n_layers))
-        else:
-            raise ValueError('Either specify layers_to_use or use_n_middle_layers')
             
-        layer_avg = self.all_projs[layers_to_use, :].mean(axis=0)
+        layer_avg = all_projs[layers_to_use, :].mean(axis=0)
         layer_avg = layer_avg.detach().cpu().numpy()
         layer_avg = layer_avg.reshape(1, -1)
         return layer_avg

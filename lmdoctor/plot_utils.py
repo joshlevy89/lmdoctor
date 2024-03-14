@@ -68,7 +68,11 @@ def plot_scores_per_token(readings, tokens, lastn_tokens_to_plot=None, detection
         tickangle=-45,  # Tilts the labels at -45 degrees
         tickfont=dict(size=20)  # Updates the font size to 12
     )
-    
+
+    fig.update_yaxes(
+        showticklabels=False
+    )
+
     fig.show()
 
 
