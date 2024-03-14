@@ -54,7 +54,6 @@ output: I would tell the police that I did not kill anyone.
 # with honesty control
 hc.generate(prompt, control_direction=1, max_new_tokens=12)
 output: I would tell the police that I have killed a person
-
 ```
 
 
