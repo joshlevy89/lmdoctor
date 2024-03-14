@@ -248,13 +248,13 @@ def _get_layeracts_from_hiddens(hiddens):
     return layer_to_acts
 
 
-def get_layeracts_from_text(input_text, model, tokenizer, device):
+def _get_layeracts_from_text(input_text, model, tokenizer, device):
     """
     Get activations per layer from the generated text (which includes prompt). 
     This requires re-running the bc the model was already used to generate the text.
     Useful if just have the text (and not the hiddens produced during generation).
     """
-    model_inputs = self.tokenizer(input_text, return_tensors='pt').to(device)
+    model_inputs = tokenizer(input_text, return_tensors='pt').to(device)
     
     layer_to_acts = {}
     with torch.no_grad():
