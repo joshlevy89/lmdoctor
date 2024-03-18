@@ -1,6 +1,5 @@
 import torch
 import os
-os.environ['TRANSFORMERS_CACHE'] = '/workspace/cache/' # must be set before import
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def vanilla_generate_wrapper(model, tokenizer, user_tag, assistant_tag, device):

@@ -165,10 +165,12 @@ class Detector:
         return layer_avg
     
     
-    def plot_projection_heatmap(self, all_projs, tokens, saturate_at='auto', **kwargs):
+    def plot_projection_heatmap(self, all_projs, tokens, **kwargs):
         if 'saturate_at' in kwargs and kwargs['saturate_at'] == 'auto':
             if self.auto_saturate_at is None:
                 self.auto_saturate_at = auto_compute_saturation(self.extractor)
+                logger.info(f'Auto setting saturate_at to {self.auto_saturate_at}, which will be used for current and'
+                            ' future detections with this detector.') 
                 kwargs['saturate_at'] = self.auto_saturate_at
             else:
                 kwargs['saturate_at'] = self.auto_saturate_at
@@ -188,9 +190,7 @@ class Detector:
 def auto_compute_saturation(extractor, percentile=25):
     proj_pairs = act_pairs_to_projs(extractor.train_acts, extractor.direction_info, len(extractor.statement_pairs['train']))
     perc = np.percentile(proj_pairs[1, :, :].view(-1), percentile)
-    saturate_at = abs(perc)
-    logger.info(f'Auto setting saturate_at to {saturate_at}, which will be used for current and'
-                ' future detections with this detector') 
+    saturate_at = abs(round(perc, 4))
     return saturate_at
     
 

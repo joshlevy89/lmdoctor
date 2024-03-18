@@ -2,7 +2,7 @@ import plotly.express as px
 import numpy as np
 import pandas as pd
 
-def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, saturate_at=3, figsize=(1000,600), extractor=None):
+def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, saturate_at=3, figsize=(1000,600)):
     """
     Projections by token/layer
     saturate_at ensures that large values don't dominate and can be adjusted. To get raw view, set to None.
