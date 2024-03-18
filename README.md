@@ -1,5 +1,5 @@
 # lmdoctor
-Extract, detect, and control semantic representations within language models as they read and write text. Built on 🤗 transformers. 
+Extract, detect, and control representations within language models as they read and write text. Built on 🤗 transformers. 
 
 [lmdoctor pip package](https://pypi.org/project/lmdoctor/)  
 
