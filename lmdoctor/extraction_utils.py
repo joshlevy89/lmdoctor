@@ -213,13 +213,14 @@ def get_directions(train_acts, device):
         direction = torch.tensor(pca.components_[0], dtype=centered_diffs.dtype).to(device)
         directions[layer] = direction 
         
-        # scale direction such that p(mu_a + scaled_direction) = p(mu_b), following marks et al. (https://arxiv.org/abs/2310.06824)
+        # scale direction such that p(mu_b + scaled_direction) = p(mu_a), following marks et al
+        # (https://arxiv.org/abs/2310.06824)
         act_pairs = train_acts[layer]
         mu_a = torch.mean(act_pairs[:, 0, :], axis=0)
         mu_b = torch.mean(act_pairs[:, 1, :], axis=0)
         norm_direction = F.normalize(direction, dim=0)
-        diff = (mu_a - mu_b) @ norm_direction.view(-1)
-        scaled_direction = (norm_direction * diff).view(-1)
+        diff_proj = (mu_a - mu_b) @ norm_direction.view(-1)
+        scaled_direction = (norm_direction * diff_proj).view(-1)
         scaled_directions[layer] = scaled_direction
     
     direction_info['unscaled_directions'] = directions # these aren't used, but kept for posterity

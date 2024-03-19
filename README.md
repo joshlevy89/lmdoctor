@@ -77,10 +77,11 @@ After install, try running honesty_example.ipynb
 
 The table below describes the targets we support for extracting internal representations. In functional extraction, the model is asked to produce text (e.g. prompt="tell me a lie"). In conceptual extraction, the model is asked to consider a statement (e.g. "consider the truthfulness of X"). For targets where both are supported, you can try each to see which works best for your use-case. 
 
-| Target      | Method | Types |
+| Target | Method | Types |
 | ----------- | ----------- | ----------- |
-| truth      | conceptual       | none       |
-| honesty   | functional        | none        |
-| morality  | conceptual & functional | none | 
-| emotion | conceptual | anger, disgust, fear, happiness, sadness, surprise | |
-| fairness | conceptual & functional | race, gender, prefession, religion
+| truth | conceptual | none |
+| honesty | functional | none |
+| morality | conceptual & functional | none | 
+| emotion | conceptual | anger, disgust, fear, happiness, sadness, surprise |
+| fairness | conceptual & functional | race, gender, prefession, religion |
+| harmlessness | conceptual | none |

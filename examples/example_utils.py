@@ -1,12 +1,13 @@
 import torch
 import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from lmdoctor.utils import format_prompt
 
 def vanilla_generate_wrapper(model, tokenizer, user_tag, assistant_tag, device):
     
-    def vanilla_generate(prompt, max_new_tokens=12, **kwargs):
-        template_str = '{user_tag}{prompt}{assistant_tag}'
-        prompt = template_str.format(user_tag=user_tag, prompt=prompt, assistant_tag=assistant_tag)
+    def vanilla_generate(prompt, max_new_tokens=12, should_format_prompt=True, **kwargs):
+        if should_format_prompt:
+            prompt = format_prompt(prompt, user_tag, assistant_tag)
         model_inputs = tokenizer(prompt, return_tensors='pt').to(device)
 
         with torch.no_grad():

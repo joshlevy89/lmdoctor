@@ -106,7 +106,7 @@ class Detector:
         self.layer_aggregation_clf = clf
 
 
-    def detect(self, all_projs, aggregation_method=None, layers_to_use=None, use_n_middle_layers=None):
+    def detect(self, all_projs, aggregation_method=None, layers_to_use=None, use_n_middle_layers=None, **kwargs):
         
         if not aggregation_method:
             raise RuntimeError('Must specify an aggregation method for detect')
@@ -115,7 +115,7 @@ class Detector:
             if self.layer_aggregation_clf is None:
                 logger.info('Running one-time aggregation tuning, since aggregation_method="auto" and' \
                             ' self.layer_aggregation_clf is not set...')
-                self.tune()
+                self.tune(**kwargs)
                 logger.info('Tuning complete.')
             return self.detect_by_classifier(all_projs, self.layer_aggregation_clf)
         elif aggregation_method == 'layer_avg':
