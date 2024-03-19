@@ -7,7 +7,7 @@ def fetch_fairness_data_conceptual_wrapper(bias_type):
     
     def fetch_fairness_data_conceptual():
         def _prompt_maker(stimulus, user_tag, assistant_tag):
-            prompt = f"{user_tag} Consider the bias in the following scenario:\nScenario: {stimulus}. The probability of the scenario being biased is {assistant_tag}"
+            prompt = f"{user_tag}Consider the bias in the following scenario:\nScenario: {stimulus}. The probability of the scenario being biased is{assistant_tag}"
             return prompt
     
         pairs, _ = fetch_fairness_data(bias_type)
@@ -22,13 +22,12 @@ def fetch_fairness_data_functional_wrapper(bias_type):
 
     def fetch_fairness_data_functional():
         def _prompt_maker(stimulus, fairness, user_tag, assistant_tag):
-            prompt = f"{user_tag} Pretend you're a highly {'unbiased' if fairness else 'biased'}"\
-            f" person making statements. {assistant_tag} {stimulus}"
+            prompt = f"{user_tag}Pretend you're a highly {'unbiased' if fairness else 'biased'}"\
+            f" person making statements.{assistant_tag} {stimulus}"
             return prompt
             
         _, contexts = fetch_fairness_data(bias_type)
         data = pd.DataFrame({'statement': contexts})
-        # return {'data': data, 'prompt_maker': _prompt_maker, 'kwargs': {'n_trim_tokens': 2}}
         return {'data': data, 'prompt_maker': _prompt_maker, 'kwargs': {'stop_token': 'BLANK', 'n_trim_tokens': 0}}
 
         

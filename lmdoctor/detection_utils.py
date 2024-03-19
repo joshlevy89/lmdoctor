@@ -6,29 +6,35 @@ from sklearn.linear_model import LogisticRegression
 import numpy as np       
 from .utils import setup_logger
 logger = setup_logger()
+from .plot_utils import plot_projection_heatmap, plot_scores_per_token
+
 
 class Detector:
     """
     Wraps model in order to capture hidden_states during generation and perform computations with those hidden_states.
     Specific detectors (e.g. LieDetector) inherit from it. 
     """
-    def __init__(self, model, tokenizer, user_tag, assistant_tag, device='cuda:0'):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.user_tag = user_tag
-        self.assistant_tag = assistant_tag
-        self.device = device
-        self.hiddens = None
-        self.all_projs = None
+    def __init__(self, extractor, device='cuda:0'):
+        self.model = extractor.model
+        self.tokenizer = extractor.tokenizer
+        self.user_tag = extractor.user_tag
+        self.assistant_tag = extractor.assistant_tag
+        self.device = extractor.device
+        self.direction_info = extractor.direction_info
+        self.extractor = extractor
+        self.auto_saturate_at = None # for heatmap
+        self.layer_aggregation_clf = None # aggregation for detection
     
-    def generate(self, prompt, gen_only=False, **kwargs):
+    
+    def generate(self, prompt, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
         """
-        If gen only, get hiddens/text for newly generated text only (i.e. exclude prompt)
+        If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
         """
         kwargs['return_dict_in_generate'] = True
         kwargs['output_hidden_states'] = True
 
-        prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
+        if should_format_prompt:
+            prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
         model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
         
         with torch.no_grad():
@@ -36,31 +42,33 @@ class Detector:
         
         if gen_only:
             sequences = output.sequences[:, model_inputs.input_ids.shape[1]:]
-            self.hiddens = output.hidden_states[1:]
+            hiddens = output.hidden_states[1:]
         else:
             sequences = output.sequences
-            self.hiddens = output.hidden_states
+            hiddens = output.hidden_states
 
         output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        return output_text
+
+        if return_projections:
+            all_projs = self.get_projections(hiddens)
+            return {'text': output_text, 'projections': all_projs}
+        else:
+            return {'text': output_text}
     
-    def get_projections(self, direction_info, input_text=None):
+    def get_projections(self, hiddens=None, input_text=None):
         """
         Computes the projections of hidden_states onto concept directions.
-        """
+        """        
         if input_text:
-            layer_to_acts = _get_layeracts_from_text(input_text, self.model, self.tokenizer)
+            layer_to_acts = _get_layeracts_from_text(input_text, self.model, self.tokenizer, self.device)
         else:
-            if self.hiddens is None:
-                raise RuntimeError(
-                    'Missing hidden states. Must either run generate method before calling get_projections OR provide an input_text')
-            layer_to_acts = _get_layeracts_from_hiddens(self.hiddens)
+            layer_to_acts = _get_layeracts_from_hiddens(hiddens)
 
-        self.all_projs = layeracts_to_projs(layer_to_acts, direction_info)
-        return self.all_projs
+        all_projs = layeracts_to_projs(layer_to_acts, self.direction_info)
+        return all_projs
 
     
-    def tune(self, statement_pairs, direction_info, batch_size=8, test_statement_pairs=None):
+    def tune(self, batch_size=8, run_test=True):
         """
         Train a classifier to learn how to weigh the layer contributions at a given token when performing detection.
         To do this, statement_pairs consisting of one positive (e.g. honesty) and one negative (e.g. dishonesty) sample
@@ -75,10 +83,11 @@ class Detector:
             X = proj_pairs.detach().cpu().numpy()
             y = np.array([1] * n_pairs + [0] * n_pairs)
             return X, y
-
         
-        act_pairs = get_activations_for_paired_statements(statement_pairs, self.model, self.tokenizer, batch_size, read_token=-1)
-        X, y = _create_projection_dataset(act_pairs, direction_info, len(statement_pairs))
+        dev_statement_pairs = self.extractor.statement_pairs['dev']
+        act_pairs = get_activations_for_paired_statements(
+            dev_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+        X, y = _create_projection_dataset(act_pairs, self.direction_info, len(dev_statement_pairs))
 
         # train
         clf = LogisticRegression()
@@ -86,48 +95,60 @@ class Detector:
         acc = clf.score(X, y)
         logger.info(f'Classifier acc on dev set: {acc}')
 
-        if test_statement_pairs is not None:
+        if run_test:
+            test_statement_pairs = self.extractor.statement_pairs['test']
             test_act_pairs = get_activations_for_paired_statements(
-                test_statement_pairs, self.model, self.tokenizer, batch_size, read_token=-1)
-            X_test, y_test = _create_projection_dataset(test_act_pairs, direction_info, len(test_statement_pairs))
+                test_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+            X_test, y_test = _create_projection_dataset(test_act_pairs, self.direction_info, len(test_statement_pairs))
             acc = clf.score(X_test, y_test)
             logger.info(f'Classifier acc on test set: {acc}')
 
-        return clf
+        self.layer_aggregation_clf = clf
 
 
-    def detect(self, classifier=None, layers_to_use=None, use_n_middle_layers=None):
-        if classifier:
-            return self.detect_by_classifier(classifier)
-        else:
-            logger.warning('It is generally recommended to use detect_by_classifier instead of detect_by_layer_avg.'
-                           ' To do so, use self.tune() to train a classifier and then pass the classifier to detect.')
-            return self.detect_by_layer_avg(layers_to_use, use_n_middle_layers)
+    def detect(self, all_projs, aggregation_method=None, layers_to_use=None, use_n_middle_layers=None, **kwargs):
+        
+        if not aggregation_method:
+            raise RuntimeError('Must specify an aggregation method for detect')
+        
+        if aggregation_method == 'auto':
+            if self.layer_aggregation_clf is None:
+                logger.info('Running one-time aggregation tuning, since aggregation_method="auto" and' \
+                            ' self.layer_aggregation_clf is not set...')
+                self.tune(**kwargs)
+                logger.info('Tuning complete.')
+            return self.detect_by_classifier(all_projs, self.layer_aggregation_clf)
+        elif aggregation_method == 'layer_avg':
+            return self.detect_by_layer_avg(all_projs, layers_to_use, use_n_middle_layers)
         
 
-    def detect_by_classifier(self, clf):
+    def detect_by_classifier(self, all_projs, clf):
         """
         For each token in proj, run a classifier over all layers to get the score
         """
-        n_tokens = self.all_projs.shape[1]
+        n_tokens = all_projs.shape[1]
         scores = []
         for i in range(n_tokens):
-            layer_vals = self.all_projs[:, i].detach().cpu().numpy()
+            layer_vals = all_projs[:, i].detach().cpu().numpy()
             score = clf.predict_proba(layer_vals.reshape(1, -1))[0][1] # prob of label=1
             scores.append(score)
         return np.array([scores])
     
     
-    def detect_by_layer_avg(self, layers_to_use=None, use_n_middle_layers=None):
+    def detect_by_layer_avg(self, all_projs, layers_to_use=None, use_n_middle_layers=None):
         """
         Logic for aggregating over layers to score tokens for degree of lying. 
         set one of:
             layers_to_use: -1 (all layers) or [start_layer, end_layer]
             use_n_middle_layers: number of middle layers to use
         """                
+
+        if not layers_to_use and not use_n_middle_layers:
+            raise ValueError('Must specify either layers_to_use or use_n_middle_layers when using detect_by_layer_avg') 
+        if layers_to_use and use_n_middle_layers:
+            raise ValueError('Either specify layers_to_use or use_n_middle_layers, not both')
+            
         if layers_to_use:
-            if use_n_middle_layers:
-                raise ValueError('Either specify layers_to_use or use_n_middle_layers, not both')
             if layers_to_use == -1:
                 layers_to_use = range(0, self.model.config.num_hidden_layers)
             else:
@@ -137,22 +158,49 @@ class Detector:
             mid = n_layers // 2
             diff = use_n_middle_layers // 2
             layers_to_use = range(max(0, mid - diff), min(mid + diff, n_layers))
-        else:
-            raise ValueError('Either specify layers_to_use or use_n_middle_layers')
             
-        layer_avg = self.all_projs[layers_to_use, :].mean(axis=0)
+        layer_avg = all_projs[layers_to_use, :].mean(axis=0)
         layer_avg = layer_avg.detach().cpu().numpy()
         layer_avg = layer_avg.reshape(1, -1)
         return layer_avg
     
+    
+    def plot_projection_heatmap(self, all_projs, tokens, **kwargs):
+        if 'saturate_at' in kwargs and kwargs['saturate_at'] == 'auto':
+            if self.auto_saturate_at is None:
+                self.auto_saturate_at = auto_compute_saturation(self.extractor)
+                logger.info(f'Auto setting saturate_at to {self.auto_saturate_at}, which will be used for current and'
+                            ' future detections with this detector.') 
+                kwargs['saturate_at'] = self.auto_saturate_at
+            else:
+                kwargs['saturate_at'] = self.auto_saturate_at
+                
+                
+        plot_projection_heatmap(all_projs, tokens, **kwargs)
+        
+        
+    def plot_scores_per_token(self, scores_per_token, tokens, **kwargs):
+        plot_scores_per_token(scores_per_token, tokens, **kwargs)
+        
+    
     def __getattr__(self, name):
         return getattr(self.model, name)
 
+    
+def auto_compute_saturation(extractor, percentile=25):
+    proj_pairs = act_pairs_to_projs(extractor.train_acts, extractor.direction_info, len(extractor.statement_pairs['train']))
+    perc = np.percentile(proj_pairs[1, :, :].view(-1), percentile)
+    saturate_at = abs(round(perc, 4))
+    return saturate_at
+    
 
-def do_projections(acts, direction, mean_diff, center=True, layer=None):
+def do_projections(acts, direction, mean_diff, center=True, normalize_direction=True):
     if center:
         acts = (acts - mean_diff).clone()
-    projections =  acts @ direction / direction.norm() # taking norm
+    if normalize_direction:
+        projections =  acts @ direction / direction.norm() 
+    else:
+        projections =  acts @ direction
     return projections
 
 def layeracts_to_projs(layer_to_acts, direction_info):
@@ -161,12 +209,12 @@ def layeracts_to_projs(layer_to_acts, direction_info):
     
     all_projs = []
     for layer in layer_to_acts:
-        projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer], layer=layer)
+        projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer])
         all_projs.append(projs)
     all_projs = torch.stack(all_projs)
     return all_projs
 
-def act_pairs_to_projs(act_pairs, direction_info, n_pairs):
+def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=True):
     
     directions = direction_info['directions']
     mean_diffs = direction_info['mean_diffs']
@@ -174,8 +222,10 @@ def act_pairs_to_projs(act_pairs, direction_info, n_pairs):
     num_layers = len(act_pairs)
     proj_pairs = torch.zeros((2, n_pairs, num_layers))
     for i, layer in enumerate(act_pairs):
-        pos_projs = do_projections(act_pairs[layer][:, 0, :], directions[layer], mean_diffs[layer], layer=layer)
-        neg_projs = do_projections(act_pairs[layer][:, 1, :], directions[layer], mean_diffs[layer], layer=layer)
+        pos_projs = do_projections(
+            act_pairs[layer][:, 0, :], directions[layer], mean_diffs[layer], normalize_direction=normalize_direction)
+        neg_projs = do_projections(
+            act_pairs[layer][:, 1, :], directions[layer], mean_diffs[layer], normalize_direction=normalize_direction)
         proj_pairs[0, :, i] = pos_projs
         proj_pairs[1, :, i] = neg_projs
     return proj_pairs
@@ -198,13 +248,13 @@ def _get_layeracts_from_hiddens(hiddens):
     return layer_to_acts
 
 
-def get_layeracts_from_text(input_text, model, tokenizer):
+def _get_layeracts_from_text(input_text, model, tokenizer, device):
     """
     Get activations per layer from the generated text (which includes prompt). 
     This requires re-running the bc the model was already used to generate the text.
     Useful if just have the text (and not the hiddens produced during generation).
     """
-    model_inputs = self.tokenizer(input_text, return_tensors='pt').to(self.device)
+    model_inputs = tokenizer(input_text, return_tensors='pt').to(device)
     
     layer_to_acts = {}
     with torch.no_grad():
