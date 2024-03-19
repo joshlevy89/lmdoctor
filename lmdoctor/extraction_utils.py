@@ -5,6 +5,7 @@ from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, 
 from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
 from .target_specific_utils.emotion_utils import fetch_emotion_data_wrapper
 from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual_wrapper, fetch_fairness_data_functional_wrapper
+from .target_specific_utils.harmlessness_utils import fetch_harmlessness_data_conceptual
 
 import numpy as np
 from collections import defaultdict
@@ -99,7 +100,8 @@ def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
         ('morality', 'conceptual'): fetch_morality_data_conceptual,
         ('emotion', 'conceptual'): fetch_emotion_data_wrapper(emotion_type), 
         ('fairness', 'conceptual'): fetch_fairness_data_conceptual_wrapper(bias_type),
-        ('fairness', 'functional'): fetch_fairness_data_functional_wrapper(bias_type)
+        ('fairness', 'functional'): fetch_fairness_data_functional_wrapper(bias_type),
+        ('harmlessness', 'conceptual'): fetch_harmlessness_data_conceptual
     }
     return target_map
 
