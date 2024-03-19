@@ -26,10 +26,10 @@ setup(
                       ],
 
     classifiers=[
-        'Development Status :: 1 - Planning',
+        'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: MIT License',  
         'Operating System :: POSIX :: Linux',        
-        'Programming Language :: Python :: 3.9'
+        'Programming Language :: Python :: 3.10.13'
     ],
 )
