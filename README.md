@@ -52,14 +52,14 @@ For the complete example, see [examples/honesty_example.ipynb](https://github.co
 
 
 ## Getting started
-[tested on linux]
+*Tested on linux*
 
 from pip: pip install lmdoctor  
 from source: "pip install ." after cloning  
 
 After install, try running honesty_example.ipynb
 
-*Note: This package requires pytorch but does not include it because the specific version/cuda backend will depend the huggingface model you are using. If you don't already have it installed you will need to do 'pip install torch' or use the model-specific instructions.*
+
 
 
 ## Extraction targets
