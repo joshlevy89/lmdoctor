@@ -18,7 +18,9 @@ logger = setup_logger()
 
 
 class Extractor:
-    def __init__(self, model, tokenizer, user_tag, assistant_tag, extraction_target=None, extraction_method=None, device='cuda:0', **kwargs):
+    def __init__(self, model, tokenizer, user_tag, assistant_tag, device='cuda:0', 
+                 extraction_target=None, extraction_method=None, 
+                 **kwargs):
         """
         kwargs: Additional keyword arguments, such as:
         - bias_type (str): The type of bias to use for fairness extraction.
@@ -42,7 +44,7 @@ class Extractor:
         self.statement_pairs = None
         self.train_acts = None
         
-    def find_directions(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32):
+    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32):
         """
         n_train_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
         """        

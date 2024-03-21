@@ -14,7 +14,7 @@ class Detector:
     Wraps model in order to capture hidden_states during generation and perform computations with those hidden_states.
     Specific detectors (e.g. LieDetector) inherit from it. 
     """
-    def __init__(self, extractor, device='cuda:0'):
+    def __init__(self, extractor):
         self.model = extractor.model
         self.tokenizer = extractor.tokenizer
         self.user_tag = extractor.user_tag
