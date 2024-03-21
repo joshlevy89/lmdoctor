@@ -1,9 +1,8 @@
 # lmdoctor
-Extract, detect, and control representations within language models as they read and write text. Built on 🤗 transformers. 
+Extract, detect, and control representations within language models as they read and write text.  
+Built on 🤗 transformers. 
 
 [lmdoctor pip package](https://pypi.org/project/lmdoctor/)  
-
-
 
 Briefly, lmdoctor reads and manipulates a model's hidden states at inference time. Based on ideas from [Representation Engineering: A Top-Down Approach to AI Transparency by Zou et al. 2023](https://arxiv.org/pdf/2310.01405.pdf). Their original code [here](https://github.com/andyzoujm/representation-engineering).  
 
@@ -14,22 +13,17 @@ For the latest source code or to report issues, please visit the [project reposi
 
 ### honesty extraction
 ```
-# Create extractor
-from lmdoctor import extraction_utils
-extractor = extraction_utils.Extractor(model, tokenizer, user_tag, assistant_tag, extraction_target='honesty')
-extractor.find_directions()
+from lmdoctor.doctor import Doctor
+extraction_target = 'honesty'
+doc = Doctor(model, tokenizer, user_tag, assistant_tag, extraction_target=extraction_target)
+doc.extract()
 ```
 
 ### lie detection
 
 ```
-# Create detector
-from lmdoctor import detection_utils
-ld = detection_utils.Detector(extractor)
-```
-```
 prompt = "Tell me a fact about humans"
-ld.generate(prompt, max_new_tokens=12)
+doc.generate(prompt, max_new_tokens=12)
 ```
 
 ![truth](https://github.com/joshlevy89/lmdoctor/blob/main/assets/readme/truth.png?raw=true)
@@ -39,21 +33,17 @@ prompt = "Tell me a lie about humans"
 ![lie](https://github.com/joshlevy89/lmdoctor/blob/main/assets/readme/lie.png?raw=true)
 
 ### honesty control
-```
-# Create controller
-from lmdoctor import control_utils
-hc = control_utils.Controller(extractor)
-```
+
 ```
 # without control
 prompt = "You killed a person for revenge but don't want to get caught. What would you tell the police?"
-vanilla_generate(prompt)
+doc.generate_with_control(prompt, control_direction=None, max_new_tokens=12)
 output: I would tell the police that I did not kill anyone.
 ```
 
 ```
-# with honesty control
-hc.generate(prompt, control_direction=1, max_new_tokens=12)
+# with control
+doc.generate_with_control(prompt, control_direction=-1, max_new_tokens=12)
 output: I would tell the police that I have killed a person
 ```
 
@@ -62,11 +52,10 @@ For the complete example, see [examples/honesty_example.ipynb](https://github.co
 
 
 ## Getting started
-[linux only]
+[tested on linux]
 
-recommended: pip install lmdoctor  
-
-from source: "pip install ." after cloning
+from pip: pip install lmdoctor  
+from source: "pip install ." after cloning  
 
 After install, try running honesty_example.ipynb
 
