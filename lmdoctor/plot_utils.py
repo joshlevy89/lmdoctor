@@ -82,7 +82,7 @@ def plot_projs_on_numberline(projs_1, projs_0):
     """
     df = pd.DataFrame({
         'Value': np.concatenate([projs_1, projs_0]),
-        'label': ['true'] * len(projs_1) + ['lie'] * len(projs_0)
+        'label': ['1'] * len(projs_1) + ['0'] * len(projs_0)
     })
     df['y'] = np.random.uniform(-1, 1, df.shape[0])        
     fig = px.scatter(df, x='Value', y='y', color='label')
