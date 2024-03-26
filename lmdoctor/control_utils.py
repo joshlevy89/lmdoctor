@@ -1,4 +1,5 @@
 from .utils import format_prompt
+from .detection_utils import generate_and_project
 
 class Controller:
     """
@@ -11,6 +12,7 @@ class Controller:
         self.user_tag = extractor.user_tag
         self.assistant_tag = extractor.assistant_tag
         self.device = extractor.device
+        self.direction_info = extractor.direction_info
         self.directions = extractor.direction_info['directions']
         if transformer_layers is None:
             self.transformer_layers = self.get_transformer_layers()
@@ -19,8 +21,11 @@ class Controller:
         for module in self.transformer_layers:
             module._forward_hooks.clear()
     
-    def generate_with_control(self, prompt, control_direction=None, n_trim_layers=10, alpha=1, 
-                              control_gen=True, control_prompt=False, should_format_prompt=True, **kwargs):
+    def generate_with_control(self, prompt, control_direction=None, alpha=1, 
+                              n_trim_layers=10, control_layers=None,
+                              control_gen=True, control_prompt=False, 
+                              gen_only=True, return_projections=True, should_format_prompt=True,
+                              **kwargs):
         """
         Adds/subtracts representation of a concept at inference time. 
         control_direction: None means no control (vanilla generation); 1 adds the vector; -1 subtracts it; 
@@ -42,8 +47,17 @@ class Controller:
         if control_direction:
             # add hooks 
             self._clear_hooks(self.model) # good practice to clear hooks first
-            start_layer, end_layer = n_trim_layers, self.model.config.num_hidden_layers-n_trim_layers
-            layers = range(start_layer, end_layer)
+            
+            if control_layers and n_trim_layers:
+                raise ValueError('Cannot specify both control_layers and n_trim_layers')
+            elif control_layers:
+                layers = control_layers 
+            elif n_trim_layers:
+                start_layer, end_layer = n_trim_layers, self.model.config.num_hidden_layers-n_trim_layers
+                layers = range(start_layer, end_layer)
+            else:
+                raise ValueError('Must specify either control_layers or n_trim_layers')
+                
             for layer in layers:
                 def hook(m, inp, op):
                     if op[0].shape[1] > 1: # corresponds to the prompt, which is passed as a chunk
@@ -61,14 +75,13 @@ class Controller:
                 # the first value in module output (used in hook) is the input to the layer
                 h = self.transformer_layers[layer].register_forward_hook(hook)
             
-        # generate after hooks have been added
-        if should_format_prompt:
-            prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
-        model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
-        output = self.model.generate(**model_inputs, **kwargs)
-        text = self.tokenizer.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        output = generate_and_project(self, prompt, direction_info=self.direction_info, 
+                                 gen_only=gen_only, return_projections=return_projections, should_format_prompt=should_format_prompt,
+                                 **kwargs)
+
+        # clear hooks
         self._clear_hooks(self.model)
-        return text
+        return output
 
     
     def get_transformer_layers(self):

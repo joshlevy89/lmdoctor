@@ -27,46 +27,12 @@ class Detector:
     
     
     def generate(self, prompt, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
-        """
-        If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
-        """
-        kwargs['return_dict_in_generate'] = True
-        kwargs['output_hidden_states'] = True
-
-        if should_format_prompt:
-            prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
-        model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
-        
-        with torch.no_grad():
-            output = self.model.generate(**model_inputs, **kwargs)
-        
-        if gen_only:
-            sequences = output.sequences[:, model_inputs.input_ids.shape[1]:]
-            hiddens = output.hidden_states[1:]
-        else:
-            sequences = output.sequences
-            hiddens = output.hidden_states
-
-        output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-
-        if return_projections:
-            all_projs = self.get_projections(hiddens)
-            return {'text': output_text, 'projections': all_projs}
-        else:
-            return {'text': output_text}
+        return generate_and_project(self, prompt, direction_info=self.direction_info, 
+                               gen_only=gen_only, return_projections=return_projections, should_format_prompt=should_format_prompt,
+                               **kwargs)
     
     def get_projections(self, hiddens=None, input_text=None):
-        """
-        Computes the projections of hidden_states onto concept directions.
-        """        
-        if input_text:
-            layer_to_acts = _get_layeracts_from_text(input_text, self.model, self.tokenizer, self.device)
-        else:
-            layer_to_acts = _get_layeracts_from_hiddens(hiddens)
-
-        all_projs = layeracts_to_projs(layer_to_acts, self.direction_info)
-        return all_projs
-
+        return _get_projections(self, self.direction_info, hiddens, input_text)
     
     def tune(self, batch_size=8, run_test=True):
         """
@@ -192,7 +158,49 @@ def auto_compute_saturation(extractor, percentile=25):
     perc = np.percentile(proj_pairs[1, :, :].view(-1), percentile)
     saturate_at = abs(round(perc, 4))
     return saturate_at
+
+
+def generate_and_project(self, prompt, direction_info=None, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
+    """
+    If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
+    """
+    if should_format_prompt:
+        prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
+    model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
+
+    with torch.no_grad():
+        kwargs['return_dict_in_generate'] = True
+        kwargs['output_hidden_states'] = True
+        output = self.model.generate(**model_inputs, **kwargs)
     
+    if gen_only:
+        sequences = output.sequences[:, model_inputs.input_ids.shape[1]:]
+        hiddens = output.hidden_states[1:]
+    else:
+        sequences = output.sequences
+        hiddens = output.hidden_states
+
+    output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+
+    if return_projections:
+        all_projs = _get_projections(self, direction_info, hiddens=hiddens)
+        return {'text': output_text, 'projections': all_projs}
+    else:
+        return {'text': output_text}
+
+
+def _get_projections(self, direction_info, hiddens=None, input_text=None):
+    """
+    Computes the projections of hidden_states onto concept directions.
+    """        
+    if input_text:
+        layer_to_acts = _get_layeracts_from_text(input_text, self.model, self.tokenizer, self.device)
+    else:
+        layer_to_acts = _get_layeracts_from_hiddens(hiddens)
+
+    all_projs = layeracts_to_projs(layer_to_acts, direction_info)
+    return all_projs
+
 
 def do_projections(acts, direction, mean_diff, center=True, normalize_direction=True):
     if center:
