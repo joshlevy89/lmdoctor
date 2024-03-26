@@ -2,7 +2,7 @@
 Utils for extracting representations associated with a function, e.g. honesty
 """
 from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional 
-from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
+from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional, fetch_morality_data_intentional_wrapper
 from .target_specific_utils.emotion_utils import fetch_emotion_data_wrapper
 from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual_wrapper, fetch_fairness_data_functional_wrapper
 from .target_specific_utils.harmlessness_utils import fetch_harmlessness_data_conceptual
@@ -19,7 +19,7 @@ logger = setup_logger()
 
 class Extractor:
     def __init__(self, model, tokenizer, user_tag, assistant_tag, device='cuda:0', 
-                 extraction_target=None, extraction_method=None, 
+                 extraction_target=None, extraction_method=None,
                  **kwargs):
         """
         kwargs: Additional keyword arguments, such as:
@@ -53,7 +53,10 @@ class Extractor:
             self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs, **self.kwargs)
         self.train_acts = get_activations_for_paired_statements(
             self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)   
-        self.direction_info = get_directions(self.train_acts, device=self.device)
+        if self.extraction_method == 'intentional':
+            self.direction_info = get_directions_multiclass(self.train_acts, device=self.device)
+        else:
+            self.direction_info = get_directions(self.train_acts, device=self.device)
     
 
 def get_extraction_function(target, extraction_method=None, **kwargs):
@@ -78,7 +81,8 @@ def get_extraction_function(target, extraction_method=None, **kwargs):
             raise RuntimeError(f"Cannot infer extraction_method for {target} extraction_target because it has {len(target_matches)} entries in target_map: {target_matches}")
     
 
-def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
+def get_extraction_target_map(target=None, emotion_type=None, bias_type=None, 
+                              tokenizer=None, user_tag=None, assistant_tag=None):
 
     if target:
         # Check to make sure the target comes with its required arguments
@@ -100,10 +104,11 @@ def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
         ('honesty', 'functional'): fetch_factual_data_functional,
         ('morality', 'functional'): fetch_morality_data_functional,
         ('morality', 'conceptual'): fetch_morality_data_conceptual,
+        ('morality', 'intentional'): fetch_morality_data_intentional_wrapper(tokenizer, user_tag, assistant_tag),
         ('emotion', 'conceptual'): fetch_emotion_data_wrapper(emotion_type), 
         ('fairness', 'conceptual'): fetch_fairness_data_conceptual_wrapper(bias_type),
         ('fairness', 'functional'): fetch_fairness_data_functional_wrapper(bias_type),
-        ('harmlessness', 'conceptual'): fetch_harmlessness_data_conceptual
+        ('harmlessness', 'conceptual'): fetch_harmlessness_data_conceptual,
     }
     return target_map
 
@@ -111,8 +116,9 @@ def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
 def prepare_statement_pairs(
     extraction_target, extraction_method, tokenizer, user_tag, assistant_tag, 
     n_train_pairs=None, n_dev_pairs=None, n_test_pairs=None, **kwargs):
-            
-    extraction_fn, extraction_method = get_extraction_function(extraction_target, extraction_method, **kwargs)
+    
+    extraction_fn, extraction_method = get_extraction_function(
+        extraction_target, extraction_method, **kwargs, tokenizer=tokenizer, user_tag=user_tag, assistant_tag=assistant_tag)
     result = extraction_fn()
     data = result.get('data')
     prompt_maker = result.get('prompt_maker')
@@ -124,6 +130,8 @@ def prepare_statement_pairs(
     elif extraction_method == 'conceptual':
         statement_pairs = prepare_conceptual_pairs(
             data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+    elif extraction_method == 'intentional':
+        statement_pairs = data
 
     d = {}
     if n_train_pairs:
@@ -185,7 +193,7 @@ def get_activations_for_paired_statements(statement_pairs, model, tokenizer, bat
         with torch.no_grad():
             hiddens = model(**model_inputs, output_hidden_states=True)
         for layer in range(model.config.num_hidden_layers):
-            act_pairs = hiddens['hidden_states'][layer+1][:, read_token, :].view(len(pairs), 2, -1)
+            act_pairs = hiddens['hidden_states'][layer+1][:, read_token, :].view(len(pairs), len(pairs[0]), -1)
             layer_to_act_pairs[layer].extend(act_pairs)
     
     for key in layer_to_act_pairs:
@@ -211,7 +219,6 @@ def get_directions(train_acts, device):
         centered_diffs = diffs - mean_diffs[layer] # is centering necessary?
         pca = PCA(n_components=1)
         pca.fit(centered_diffs.detach().cpu())
-        centered_diffs.dtype
         direction = torch.tensor(pca.components_[0], dtype=centered_diffs.dtype).to(device)
         directions[layer] = direction 
         
@@ -229,6 +236,55 @@ def get_directions(train_acts, device):
     direction_info['directions'] = scaled_directions
     direction_info['mean_diffs'] = mean_diffs
     return direction_info
+
+
+def get_directions_multiclass(train_acts, device):
+    directions = {}
+    direction_info = defaultdict(dict)
+    for layer in train_acts:
+        act_groups = train_acts[layer]
+        # ungroup the act_groups (make it a list of acts) and assign labels accordingly
+        samples, n_per_pair, hidden_dim = act_groups.shape
+        acts = act_groups.view(-1, hidden_dim).detach().cpu().numpy()
+        labels = np.array(list(range(n_per_pair)) * samples)
+        # train svm
+        clf = train_svm(acts, labels)
+        # get the direction from it
+        direction = torch.tensor(clf.coef_, dtype=act_groups.dtype).to(device)
+        directions[layer] = direction
+
+    # TODO: there's no way to scale the direction vector in the case of multiclass. 
+    direction_info['directions'] = directions 
+    direction_info['clf'] = clf
+
+    return direction_info
+
+def train_svm(X, y):
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.svm import SVC
+    from sklearn.metrics import classification_report
+    # import pdb; pdb.set_trace()
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)  # 70% training and 30% testing
+
+    # Feature Scaling
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
+
+    # Create a SVM Classifier
+    clf = SVC(kernel='linear', decision_function_shape='ovr')  # Linear Kernel
+    
+    # Train the model using the training sets
+    clf.fit(X_train, y_train)
+
+    # Predict the response for the test dataset
+    y_pred = clf.predict(X_test)
+    
+    # Print classification report
+    # print(classification_report(y_test, y_pred))
+
+    return clf
 
     
 # def get_accs_for_pairs(test_acts, direction_info):

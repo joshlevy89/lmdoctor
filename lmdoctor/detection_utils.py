@@ -50,12 +50,15 @@ class Detector:
         output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 
         if return_projections:
-            all_projs = self.get_projections(hiddens)
+            if 'clf' in self.direction_info:
+                all_projs = self.get_projections(hiddens=hiddens, multiclass=True)
+            else:
+                all_projs = self.get_projections(hiddens=hiddens)
             return {'text': output_text, 'projections': all_projs}
         else:
             return {'text': output_text}
     
-    def get_projections(self, hiddens=None, input_text=None):
+    def get_projections(self, hiddens=None, input_text=None, multiclass=False):
         """
         Computes the projections of hidden_states onto concept directions.
         """        
@@ -64,8 +67,11 @@ class Detector:
         else:
             layer_to_acts = _get_layeracts_from_hiddens(hiddens)
 
-        all_projs = layeracts_to_projs(layer_to_acts, self.direction_info)
-        return all_projs
+        if multiclass:
+            all_projs = layeracts_to_projs_multiclass(layer_to_acts, self.direction_info)
+        else:
+            all_projs = layeracts_to_projs(layer_to_acts, self.direction_info)
+        return all_projs            
 
     
     def tune(self, batch_size=8, run_test=True):
@@ -203,6 +209,10 @@ def do_projections(acts, direction, mean_diff, center=True, normalize_direction=
         projections =  acts @ direction
     return projections
 
+
+def do_projections_multiclass(acts, clf):
+    return torch.tensor(clf.decision_function(acts.cpu().numpy()))
+
 def layeracts_to_projs(layer_to_acts, direction_info):
     directions = direction_info['directions']
     mean_diffs = direction_info['mean_diffs']
@@ -211,6 +221,19 @@ def layeracts_to_projs(layer_to_acts, direction_info):
     for layer in layer_to_acts:
         projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer])
         all_projs.append(projs)
+    all_projs = torch.stack(all_projs)
+    return all_projs
+
+
+def layeracts_to_projs_multiclass(layer_to_acts, direction_info):
+    directions = direction_info['directions']
+    clf = direction_info['clf']
+    
+    all_projs = []
+    for layer in layer_to_acts:
+        projs = do_projections_multiclass(layer_to_acts[layer], clf)
+        all_projs.append(projs)
+    # import pdb; pdb.set_trace()
     all_projs = torch.stack(all_projs)
     return all_projs
 
