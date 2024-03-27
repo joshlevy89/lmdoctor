@@ -50,7 +50,7 @@ class Detector:
         output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 
         if return_projections:
-            if 'clf' in self.direction_info:
+            if 'clfs' in self.direction_info:
                 all_projs = self.get_projections(hiddens=hiddens, multiclass=True)
             else:
                 all_projs = self.get_projections(hiddens=hiddens)
@@ -229,12 +229,11 @@ def layeracts_to_projs(layer_to_acts, direction_info):
 
 
 def layeracts_to_projs_multiclass(layer_to_acts, direction_info):
-    directions = direction_info['directions']
-    clf = direction_info['clf']
+    clfs = direction_info['clfs']
     
     all_projs = []
     for layer in layer_to_acts:
-        projs = do_projections_multiclass(layer_to_acts[layer], clf)
+        projs = do_projections_multiclass(layer_to_acts[layer], clfs[layer])
         all_projs.append(projs)
     # import pdb; pdb.set_trace()
     all_projs = torch.stack(all_projs)
@@ -259,14 +258,14 @@ def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=T
 
 def act_pairs_to_projs_multiclass(act_pairs, direction_info, n_pairs, normalize_direction=True):
     
-    clf = direction_info['clf']
+    clfs = direction_info['clfs']
 
     num_layers = len(act_pairs)
     num_classes = act_pairs[0].shape[1]
     proj_pairs = torch.zeros((num_classes, n_pairs, num_classes, num_layers))
     for i, layer in enumerate(act_pairs):
         for cls in range(num_classes):
-            projs = do_projections_multiclass(act_pairs[layer][:, cls, :], clf)
+            projs = do_projections_multiclass(act_pairs[layer][:, cls, :], clfs[layer])
             proj_pairs[cls, :, : , i] = projs
     return proj_pairs
 

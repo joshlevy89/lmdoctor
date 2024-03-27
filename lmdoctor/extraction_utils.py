@@ -240,6 +240,7 @@ def get_directions(train_acts, device):
 
 def get_directions_multiclass(train_acts, device):
     directions = {}
+    clfs = {}
     direction_info = defaultdict(dict)
     for layer in train_acts:
         act_groups = train_acts[layer]
@@ -253,11 +254,11 @@ def get_directions_multiclass(train_acts, device):
         # get the direction from it
         direction = torch.tensor(clf.coef_, dtype=act_groups.dtype).to(device)
         directions[layer] = direction
+        clfs[layer] = clf
 
     # TODO: there's no way to scale the direction vector in the case of multiclass. 
     direction_info['directions'] = directions 
-    direction_info['clf'] = clf
-
+    direction_info['clfs'] = clfs
     return direction_info
 
 def train_svm(X, y):
