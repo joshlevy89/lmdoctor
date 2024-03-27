@@ -2,7 +2,7 @@ import plotly.express as px
 import numpy as np
 import pandas as pd
 
-def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, saturate_at=3, figsize=(1000,600)):
+def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, saturate_at=3, figsize=(1000,600), color_range=None):
     """
     Projections by token/layer
     saturate_at ensures that large values don't dominate and can be adjusted. To get raw view, set to None.
@@ -15,7 +15,9 @@ def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, satura
         plot_tokens = tokens
     
     fig = px.imshow(plot_data, color_continuous_scale='RdYlGn', labels=dict(x="Token"))
-    if saturate_at is not None:
+    if color_range:
+        fig.update_coloraxes(cmin=color_range[0], cmax=color_range[1])
+    elif saturate_at is not None:
         if saturate_at == -1:
             # set the max and min based on largest value in data
             absmax = np.max(np.abs(plot_data))
@@ -76,13 +78,34 @@ def plot_scores_per_token(readings, tokens, lastn_tokens_to_plot=None, detection
     fig.show()
 
 
-def plot_projs_on_numberline(projs_1, projs_0):
+# def plot_projs_on_numberline(projs_1, projs_0):
+#     """
+#     Plot projections on numberline with a bit of jitter
+#     """
+#     df = pd.DataFrame({
+#         'Value': np.concatenate([projs_1, projs_0]),
+#         'label': ['1'] * len(projs_1) + ['0'] * len(projs_0)
+#     })
+#     df['y'] = np.random.uniform(-1, 1, df.shape[0])        
+#     fig = px.scatter(df, x='Value', y='y', color='label')
+    
+#     fig.update_xaxes(showgrid=False)
+#     fig.update_yaxes(showgrid=False, 
+#                      zeroline=True, zerolinecolor='black', zerolinewidth=3,
+#                      showticklabels=False)
+#     fig.update_layout(height=200, plot_bgcolor='white')
+    
+#     fig.show()
+
+
+def plot_projs_on_numberline(*projs_):
     """
     Plot projections on numberline with a bit of jitter
     """
+    vals = np.concatenate(projs_)
     df = pd.DataFrame({
-        'Value': np.concatenate([projs_1, projs_0]),
-        'label': ['1'] * len(projs_1) + ['0'] * len(projs_0)
+        'Value': np.concatenate(projs_),
+        'label': ['1'] * len(projs_[0]) + ['0'] * (len(vals) - len(projs_[0]))
     })
     df['y'] = np.random.uniform(-1, 1, df.shape[0])        
     fig = px.scatter(df, x='Value', y='y', color='label')

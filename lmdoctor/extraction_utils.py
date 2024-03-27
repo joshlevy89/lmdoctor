@@ -248,7 +248,8 @@ def get_directions_multiclass(train_acts, device):
         acts = act_groups.view(-1, hidden_dim).detach().cpu().numpy()
         labels = np.array(list(range(n_per_pair)) * samples)
         # train svm
-        clf = train_svm(acts, labels)
+        # clf = train_svm(acts, labels)
+        clf = train_multiclass(acts, labels)
         # get the direction from it
         direction = torch.tensor(clf.coef_, dtype=act_groups.dtype).to(device)
         directions[layer] = direction
@@ -264,13 +265,13 @@ def train_svm(X, y):
     from sklearn.preprocessing import StandardScaler
     from sklearn.svm import SVC
     from sklearn.metrics import classification_report
-    # import pdb; pdb.set_trace()
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)  # 70% training and 30% testing
 
-    # Feature Scaling
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
+    # # Feature Scaling
+    # scaler = StandardScaler()
+    # X_train = scaler.fit_transform(X_train)
+    # X_test = scaler.transform(X_test)
 
     # Create a SVM Classifier
     clf = SVC(kernel='linear', decision_function_shape='ovr')  # Linear Kernel
@@ -285,6 +286,37 @@ def train_svm(X, y):
     # print(classification_report(y_test, y_pred))
 
     return clf
+
+
+def train_multiclass(X, y):
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import classification_report
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)  # 70% training and 30% testing
+    
+    # Feature Scaling
+    # Un-comment these lines if your logistic regression benefits from feature scaling
+    # scaler = StandardScaler()
+    # X_train = scaler.fit_transform(X_train)
+    # X_test = scaler.transform(X_test)
+    
+    # Create a Logistic Regression Classifier
+    # Note: C is the inverse of regularization strength; smaller values specify stronger regularization
+    clf = LogisticRegression(multi_class='multinomial', solver='lbfgs', random_state=42)
+    
+    # Train the model using the training sets
+    clf.fit(X_train, y_train)
+    
+    # Predict the response for the test dataset
+    y_pred = clf.predict(X_test)
+    
+    # Print classification report
+    # print(classification_report(y_test, y_pred))
+
+    return clf
+
 
     
 # def get_accs_for_pairs(test_acts, direction_info):

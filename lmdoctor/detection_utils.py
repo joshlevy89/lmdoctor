@@ -210,8 +210,11 @@ def do_projections(acts, direction, mean_diff, center=True, normalize_direction=
     return projections
 
 
+# def do_projections_multiclass(acts, clf):
+#     return torch.tensor(clf.decision_function(acts.cpu().numpy()))
+
 def do_projections_multiclass(acts, clf):
-    return torch.tensor(clf.decision_function(acts.cpu().numpy()))
+    return torch.tensor(clf.predict_proba(acts.cpu().numpy()))
 
 def layeracts_to_projs(layer_to_acts, direction_info):
     directions = direction_info['directions']
@@ -252,6 +255,21 @@ def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=T
         proj_pairs[0, :, i] = pos_projs
         proj_pairs[1, :, i] = neg_projs
     return proj_pairs
+
+
+def act_pairs_to_projs_multiclass(act_pairs, direction_info, n_pairs, normalize_direction=True):
+    
+    clf = direction_info['clf']
+
+    num_layers = len(act_pairs)
+    num_classes = act_pairs[0].shape[1]
+    proj_pairs = torch.zeros((num_classes, n_pairs, num_classes, num_layers))
+    for i, layer in enumerate(act_pairs):
+        for cls in range(num_classes):
+            projs = do_projections_multiclass(act_pairs[layer][:, cls, :], clf)
+            proj_pairs[cls, :, : , i] = projs
+    return proj_pairs
+
 
 
 def _get_layeracts_from_hiddens(hiddens):
