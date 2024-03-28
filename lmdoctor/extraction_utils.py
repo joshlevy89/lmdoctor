@@ -203,11 +203,6 @@ def scale_direction(act_pairs, direction):
     norm_direction = F.normalize(direction, dim=0)
     diff_proj = (mu_a - mu_b) @ norm_direction.view(-1)
     scaled_direction = (norm_direction * diff_proj).view(-1)
-    print(direction)
-    print('lo')
-    print(scaled_direction)
-    # if not torch.isnan(scaled_direction).any().item() is True:
-        # import pdb; pdb.set_trace()
     return scaled_direction
 
 
@@ -216,6 +211,8 @@ def get_directions(train_acts, device, method):
         return get_directions_pca(train_acts, device)
     elif method == 'logreg':
         return get_directions_logreg(train_acts, device)
+    elif method == 'mass_mean':
+        return get_directions_massmean(train_acts, device)
         
 
 def get_directions_pca(train_acts, device):
@@ -287,6 +284,25 @@ def train_logreg(X, y, test_clf=False):
     clf.fit(X, y)
 
     return clf
+
+
+def get_directions_massmean(train_acts, device):
+    directions = {}
+    scaled_directions = {}
+    direction_info = defaultdict(dict)
+    for layer in train_acts:
+        act_pairs = train_acts[layer]
+        mu_a = torch.mean(act_pairs[:, 0, :], axis=0)
+        mu_b = torch.mean(act_pairs[:, 1, :], axis=0)
+        direction = mu_a - mu_b
+        directions[layer] = direction
+        # scale
+        scaled_direction = scale_direction(act_pairs, direction)
+        scaled_directions[layer] = scaled_direction
+
+    direction_info['unscaled_directions'] = directions # these aren't used, but kept for posterity
+    direction_info['directions'] = scaled_directions
+    return direction_info
     
     
 
