@@ -194,8 +194,8 @@ def auto_compute_saturation(extractor, percentile=25):
     return saturate_at
     
 
-def do_projections(acts, direction, mean_diff, center=True, normalize_direction=True):
-    if center:
+def do_projections(acts, direction, mean_diff=None, center=True, normalize_direction=True):
+    if center and mean_diff is not None:
         acts = (acts - mean_diff).clone()
     if normalize_direction:
         projections =  acts @ direction / direction.norm() 
@@ -205,11 +205,12 @@ def do_projections(acts, direction, mean_diff, center=True, normalize_direction=
 
 def layeracts_to_projs(layer_to_acts, direction_info):
     directions = direction_info['directions']
-    mean_diffs = direction_info['mean_diffs']
+    mean_diffs = direction_info.get('mean_diffs', {})
     
     all_projs = []
     for layer in layer_to_acts:
-        projs = do_projections(layer_to_acts[layer], directions[layer], mean_diffs[layer])
+        projs = do_projections(layer_to_acts[layer], directions[layer], 
+                               mean_diff=mean_diffs.get(layer))
         all_projs.append(projs)
     all_projs = torch.stack(all_projs)
     return all_projs
@@ -217,15 +218,15 @@ def layeracts_to_projs(layer_to_acts, direction_info):
 def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=True):
     
     directions = direction_info['directions']
-    mean_diffs = direction_info['mean_diffs']
+    mean_diffs = direction_info.get('mean_diffs', {})
 
     num_layers = len(act_pairs)
     proj_pairs = torch.zeros((2, n_pairs, num_layers))
     for i, layer in enumerate(act_pairs):
-        pos_projs = do_projections(
-            act_pairs[layer][:, 0, :], directions[layer], mean_diffs[layer], normalize_direction=normalize_direction)
-        neg_projs = do_projections(
-            act_pairs[layer][:, 1, :], directions[layer], mean_diffs[layer], normalize_direction=normalize_direction)
+        pos_projs = do_projections(act_pairs[layer][:, 0, :], directions[layer], 
+                                   mean_diff=mean_diffs.get(layer), normalize_direction=normalize_direction)
+        neg_projs = do_projections(act_pairs[layer][:, 1, :], directions[layer], 
+                                   mean_diff=mean_diffs.get(layer), normalize_direction=normalize_direction)
         proj_pairs[0, :, i] = pos_projs
         proj_pairs[1, :, i] = neg_projs
     return proj_pairs
