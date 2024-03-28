@@ -1,13 +1,13 @@
 # lmdoctor
-Extract, detect, and control representations within language models as they read and write text.  
-Built on 🤗 transformers. 
+Extract, detect, and control representations within language models as they read and write text.
 
-[lmdoctor pip package](https://pypi.org/project/lmdoctor/)  
+Detect lies, block harmful content, alter emotiontal tone, and more! 
 
-Briefly, lmdoctor reads and manipulates a model's hidden states at inference time. Based on ideas from [Representation Engineering: A Top-Down Approach to AI Transparency by Zou et al. 2023](https://arxiv.org/pdf/2310.01405.pdf). Their original code [here](https://github.com/andyzoujm/representation-engineering).  
+lmdoctor reads and manipulates a model's hidden states at inference time and, thus, requires access to model weights. Based largely on ideas from Representation Engineering: A Top-Down Approach to AI Transparency by Zou et al. 2023 ([paper](https://arxiv.org/pdf/2310.01405.pdf), [code](https://github.com/andyzoujm/representation-engineering)), as well as The Geometry of Truth by Marks & Tegmark, 2023 ([paper](https://arxiv.org/abs/2310.06824), [code](https://github.com/saprmarks/geometry-of-truth)). 
 
-
-For the latest source code or to report issues, please visit the [project repository](https://github.com/joshlevy89/lmdoctor).
+Built on 🤗 transformers  
+pip package [here](https://pypi.org/project/lmdoctor/)  
+project repo [here](https://github.com/joshlevy89/lmdoctor)
 
 ## Example
 
@@ -54,8 +54,8 @@ For the complete example, see [examples/honesty_example.ipynb](https://github.co
 ## Getting started
 *Tested on linux*
 
-from pip: pip install lmdoctor  
-from source: "pip install ." after cloning  
+from pip: ```pip install lmdoctor```  
+from source: ```pip install .``` after cloning  
 
 After install, try running honesty_example.ipynb
 
