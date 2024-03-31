@@ -1,7 +1,7 @@
 """
 Utils for extracting representations associated with a function, e.g. honesty
 """
-from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional 
+from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional, fetch_hallucination_data_functional_wrapper 
 from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
 from .target_specific_utils.emotion_utils import fetch_emotion_data_wrapper
 from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual_wrapper, fetch_fairness_data_functional_wrapper
@@ -60,12 +60,12 @@ class Extractor:
         self.direction_info = get_directions(self.train_acts, self.device, self.probe_type)
     
 
-def get_extraction_function(target, extraction_method=None, **kwargs):
+def get_extraction_function(target, tokenizer, user_tag, assistant_tag, extraction_method=None, **kwargs):
     """
     Get the data extraction function for the given target and extraction. 
     If no extraction_method supplied, tries to infer one. 
     """
-    target_map = get_extraction_target_map(target, **kwargs)
+    target_map = get_extraction_target_map(target, tokenizer, user_tag, assistant_tag, **kwargs)
     target_matches = [k for k in list(target_map) if k[0]==target] # all the tuple-keys that match the target
     if not target_matches:
         valid_targets = np.unique([k[0] for k in list(target_map)])
@@ -82,7 +82,7 @@ def get_extraction_function(target, extraction_method=None, **kwargs):
             raise RuntimeError(f"Cannot infer extraction_method for {target} extraction_target because it has {len(target_matches)} entries in target_map: {target_matches}")
     
 
-def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
+def get_extraction_target_map(target=None, tokenizer=None, user_tag=None, assistant_tag=None, emotion_type=None, bias_type=None):
 
     if target:
         # Check to make sure the target comes with its required arguments
@@ -102,6 +102,7 @@ def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
     target_map = {
         ('truth', 'conceptual'): fetch_factual_data_conceptual,
         ('honesty', 'functional'): fetch_factual_data_functional,
+        ('hallucination', 'functional'): fetch_hallucination_data_functional_wrapper(tokenizer, user_tag, assistant_tag),
         ('morality', 'functional'): fetch_morality_data_functional,
         ('morality', 'conceptual'): fetch_morality_data_conceptual,
         ('emotion', 'conceptual'): fetch_emotion_data_wrapper(emotion_type), 
@@ -116,18 +117,23 @@ def prepare_statement_pairs(
     extraction_target, extraction_method, tokenizer, user_tag, assistant_tag, 
     n_train_pairs=None, n_dev_pairs=None, n_test_pairs=None, **kwargs):
             
-    extraction_fn, extraction_method = get_extraction_function(extraction_target, extraction_method, **kwargs)
+    extraction_fn, extraction_method = get_extraction_function(
+        extraction_target, tokenizer, user_tag, assistant_tag, extraction_method, **kwargs)
     result = extraction_fn()
-    data = result.get('data')
-    prompt_maker = result.get('prompt_maker')
-    kwargs = result.get('kwargs', {})    
-    
-    if extraction_method == 'functional':
-        statement_pairs = prepare_functional_pairs(
-            data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
-    elif extraction_method == 'conceptual':
-        statement_pairs = prepare_conceptual_pairs(
-            data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+
+    if result.get('statement_pairs') is not None:
+        statement_pairs = result.get('statement_pairs')
+    else:
+        data = result.get('data')
+        prompt_maker = result.get('prompt_maker')
+        kwargs = result.get('kwargs', {})    
+        
+        if extraction_method == 'functional':
+            statement_pairs = prepare_functional_pairs(
+                data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+        elif extraction_method == 'conceptual':
+            statement_pairs = prepare_conceptual_pairs(
+                data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
 
     d = {}
     if n_train_pairs:
