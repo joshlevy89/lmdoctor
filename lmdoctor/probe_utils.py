@@ -50,9 +50,9 @@ def probe_pca(train_acts, device):
     return direction_info
 
 
-def probe_logreg(train_acts, device):
+def probe_logreg(train_acts, device, test_clf=False):
 
-    def _train_logreg(X, y, test_clf=False):    
+    def _train_logreg(X, y, test_clf):    
         if test_clf:
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
             clf = LogisticRegression(random_state=42)
@@ -74,7 +74,7 @@ def probe_logreg(train_acts, device):
         n_pairs, n_classes, hidden_dim = act_pairs.shape
         acts = act_pairs.view(-1, hidden_dim)
         labels = [1, 0] * n_pairs
-        clf = _train_logreg(acts.cpu().numpy(), np.array(labels))
+        clf = _train_logreg(acts.cpu().numpy(), np.array(labels), test_clf)
         direction = torch.tensor(clf.coef_[0], dtype=act_pairs.dtype).to(device)
         directions[layer] = direction
         # scale

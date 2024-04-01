@@ -1,7 +1,7 @@
 """
 Utils for extracting representations associated with a function, e.g. honesty
 """
-from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional, fetch_hallucination_data_functional_wrapper 
+from .target_specific_utils.honesty_utils import fetch_factual_data_conceptual, fetch_factual_data_functional, fetch_hallucination_data_functional_wrapper, fetch_hallucination_data_conceptual
 from .target_specific_utils.morality_utils import fetch_morality_data_conceptual, fetch_morality_data_functional
 from .target_specific_utils.emotion_utils import fetch_emotion_data_wrapper
 from .target_specific_utils.fairness_utils import fetch_fairness_data_conceptual_wrapper, fetch_fairness_data_functional_wrapper
@@ -48,7 +48,7 @@ class Extractor:
         self.statement_pairs = None
         self.train_acts = None
         
-    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32):
+    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32, **extract_kwargs):
         """
         n_train_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
         """        
@@ -57,7 +57,7 @@ class Extractor:
             self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs, **self.kwargs)
         self.train_acts = get_activations_for_paired_statements(
             self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)   
-        self.direction_info = get_directions(self.train_acts, self.device, self.probe_type)
+        self.direction_info = get_directions(self.train_acts, self.device, self.probe_type, **extract_kwargs)
     
 
 def get_extraction_function(target, tokenizer, user_tag, assistant_tag, extraction_method=None, **kwargs):
@@ -102,7 +102,9 @@ def get_extraction_target_map(target=None, tokenizer=None, user_tag=None, assist
     target_map = {
         ('truth', 'conceptual'): fetch_factual_data_conceptual,
         ('honesty', 'functional'): fetch_factual_data_functional,
-        ('hallucination', 'functional'): fetch_hallucination_data_functional_wrapper(tokenizer, user_tag, assistant_tag),
+        ('hallucination', 'functional'): fetch_hallucination_data_functional_wrapper(
+            tokenizer, user_tag, assistant_tag),
+        ('hallucination', 'conceptual'): fetch_hallucination_data_conceptual,
         ('morality', 'functional'): fetch_morality_data_functional,
         ('morality', 'conceptual'): fetch_morality_data_conceptual,
         ('emotion', 'conceptual'): fetch_emotion_data_wrapper(emotion_type), 
@@ -204,11 +206,11 @@ def get_activations_for_paired_statements(statement_pairs, model, tokenizer, bat
     return layer_to_act_pairs  
 
 
-def get_directions(train_acts, device, probe_type):
+def get_directions(train_acts, device, probe_type, **extract_kwargs):
     if probe_type == 'pca':
         return probe_pca(train_acts, device)
     elif probe_type == 'logreg':
-        return probe_logreg(train_acts, device)
+        return probe_logreg(train_acts, device, **extract_kwargs)
     elif probe_type == 'massmean':
         return probe_massmean(train_acts, device)
     else:

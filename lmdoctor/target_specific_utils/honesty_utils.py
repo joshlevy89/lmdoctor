@@ -1,6 +1,7 @@
 import pandas as pd
 import importlib
 import numpy as np
+import json
     
 def fetch_factual_data():
         
@@ -68,3 +69,56 @@ def fetch_hallucination_data_functional_wrapper(tokenizer, user_tag, assistant_t
         return {'statement_pairs': statement_pairs}
         
     return fetch_hallucination_data_functional
+
+
+def fetch_hallucination_answers():
+    with importlib.resources.path('lmdoctor.data.hallucinations', 'hallucination_answers.json') as data_path:
+        with open(data_path, 'r') as file:
+            data = json.load(file)
+
+    return data
+
+def fetch_hallucination_data_conceptual():
+
+    def _prompt_maker(stimulus, user_tag, assistant_tag):
+        # prompt = f"{user_tag}Consider the amount of truthfulness in the following statement:\nStatement: {stimulus} The amount of truthfulness in the statement is{assistant_tag}"
+        prompt = f"{user_tag}Consider the amount of truthfulness in the following statement.\nStatement: {stimulus}{assistant_tag} The amount of truthfulness in this statement is"
+        return prompt
+
+
+    import random 
+    seed = 42
+    random.seed(seed)
+        
+    data = fetch_hallucination_answers()
+
+    prompt_pairs = data['respones']
+    real_list = []
+    hallucination_list = []
+    for pair in prompt_pairs:
+        if 'made_up_prompt' in pair[0]:
+            hallucination_set, real_set = pair[0], pair[1]
+        elif 'made_up_prompt' in pair[1]:
+            hallucination_set, real_set = pair[1], pair[0]
+        else:
+            raise Exception('Did not find made_up_prompt')
+
+
+        hallucination_list.append(hallucination_set['answer_as_real'])
+        
+        # for the "good", non hallucination, sometimes use the answer to the real question and sometimes 
+        # use the answer to the hallucination question that treats it as fake (i.e. denies hallucinating)
+        if random.random() < .5:
+            real_list.append(hallucination_set['answer_as_fake'])
+        else:
+            real_list.append(real_set['answer'])
+
+    answers = []    
+    for item1, item2 in zip(real_list, hallucination_list):
+        answers.append(item1)
+        answers.append(item2)
+    labels = [1, 0] * len(prompt_pairs)
+
+    data = pd.DataFrame({'statement': answers, 'label': labels})
+            
+    return {'data': data, 'prompt_maker': _prompt_maker, 'kwargs': {'shuffle': False}}
