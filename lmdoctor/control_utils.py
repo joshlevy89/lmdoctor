@@ -1,4 +1,5 @@
 from .utils import format_prompt
+import torch
 
 class Controller:
     """
@@ -20,7 +21,8 @@ class Controller:
             module._forward_hooks.clear()
     
     def generate_with_control(self, prompt, control_direction=None, n_trim_layers=10, alpha=1, 
-                              control_gen=True, control_prompt=False, should_format_prompt=True, **kwargs):
+                              control_gen=True, control_prompt=False, should_format_prompt=True, 
+                              random_seed=None, **kwargs):
         """
         Adds/subtracts representation of a concept at inference time. 
         control_direction: None means no control (vanilla generation); 1 adds the vector; -1 subtracts it; 
@@ -64,6 +66,10 @@ class Controller:
         # generate after hooks have been added
         if should_format_prompt:
             prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
+
+        if random_seed is not None:
+            torch.manual_seed(random_seed)
+            
         model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
         output = self.model.generate(**model_inputs, **kwargs)
         text = self.tokenizer.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
