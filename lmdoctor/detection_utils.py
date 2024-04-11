@@ -26,16 +26,57 @@ class Detector:
         self.layer_aggregation_clf = None # aggregation for detection
     
     
-    def generate(self, prompt, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
+    # def generate(self, prompt, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
+    #     """
+    #     If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
+    #     """
+    #     kwargs['return_dict_in_generate'] = True
+    #     kwargs['output_hidden_states'] = True
+
+    #     if should_format_prompt:
+    #         prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
+    #     model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
+        
+    #     with torch.no_grad():
+    #         output = self.model.generate(**model_inputs, **kwargs)
+        
+    #     if gen_only:
+    #         sequences = output.sequences[:, model_inputs.input_ids.shape[1]:]
+    #         hiddens = output.hidden_states[1:]
+    #     else:
+    #         sequences = output.sequences
+    #         hiddens = output.hidden_states
+
+    #     output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+
+    #     if return_projections:
+    #         all_projs = self.get_projections(hiddens)
+    #         return {'text': output_text, 'projections': all_projs}
+    #     else:
+    #         return {'text': output_text}
+
+
+    def generate(self, prompts, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
         """
         If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
         """
         kwargs['return_dict_in_generate'] = True
         kwargs['output_hidden_states'] = True
 
+        if not isinstance(prompts, list):
+            # standardize case where pass just a string
+            singleton=True
+            prompts = [prompts]
+        else:
+            singleton=False
+                       
         if should_format_prompt:
-            prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
-        model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
+            formatted_prompts = []
+            for prompt in prompts:
+                formatted_prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
+                formatted_prompts.append(formatted_prompt)
+            prompts = formatted_prompts
+        model_inputs = self.tokenizer(prompts, return_tensors='pt', padding=True).to(self.device)
         
         with torch.no_grad():
             output = self.model.generate(**model_inputs, **kwargs)
@@ -47,13 +88,31 @@ class Detector:
             sequences = output.sequences
             hiddens = output.hidden_states
 
-        output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-
+        output_texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+            
         if return_projections:
-            all_projs = self.get_projections(hiddens)
-            return {'text': output_text, 'projections': all_projs}
+            unpacked_hiddens = _unpack_batched_hiddens(hiddens)
+            all_projs_list = []
+            for i in range(len(unpacked_hiddens)):
+                h = unpacked_hiddens[i]
+                all_projs = self.get_projections(h)
+                # realign with ntokens bc batching
+                ntokens = len(self.tokenizer.tokenize(output_texts[i]))
+                all_projs = all_projs[:, -ntokens:]
+                all_projs_list.append(all_projs)
+
+        if singleton:
+            output_texts = output_texts[0]
+            output_projs = all_projs_list[0]
         else:
-            return {'text': output_text}
+            output_texts = output_texts
+            output_projs = all_projs_list
+            
+        if return_projections:
+            return {'text': output_texts, 'projections': output_projs, 'raw_hiddens': hiddens}
+        else:
+            return {'text': output_texts}
+
     
     def get_projections(self, hiddens=None, input_text=None):
         """
@@ -231,6 +290,17 @@ def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=T
         proj_pairs[1, :, i] = neg_projs
     return proj_pairs
 
+
+def _unpack_batched_hiddens(hiddens):
+    
+    ntokens, nlayers, batch_size = len(hiddens), len(hiddens[0]), hiddens[0][0].shape[0]
+    unpacked_hiddens = [[] for _ in range(batch_size)]
+    for token in range(ntokens):  
+        for batch_part in range(batch_size):
+            batch_part_data = [hiddens[token][idx][batch_part].unsqueeze(0) for idx in range(nlayers)]
+            unpacked_hiddens[batch_part].append(batch_part_data)
+    return unpacked_hiddens
+    
 
 def _get_layeracts_from_hiddens(hiddens):
     """
