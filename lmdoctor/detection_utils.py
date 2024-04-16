@@ -56,86 +56,86 @@ class Detector:
     #         return {'text': output_text}
 
 
-#     def generate(self, prompts, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
-#         """
-#         If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
-#         """
+    # def generate(self, prompts, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
+    #     """
+    #     If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
+    #     """
         
-#         def _find_start_indices_after_mask(attention_mask):
-#             start_indices = []
-#             for mask in attention_mask:
-#                 index = torch.where(mask == 1)[0][0].item()  # Get the index of the first '1'
-#                 start_indices.append(index)
-#             return start_indices
+    #     def _find_start_indices_after_mask(attention_mask):
+    #         start_indices = []
+    #         for mask in attention_mask:
+    #             index = torch.where(mask == 1)[0][0].item()  # Get the index of the first '1'
+    #             start_indices.append(index)
+    #         return start_indices
         
-#         kwargs['return_dict_in_generate'] = True
-#         kwargs['output_hidden_states'] = True
+    #     kwargs['return_dict_in_generate'] = True
+    #     kwargs['output_hidden_states'] = True
 
-#         if not isinstance(prompts, list):
-#             # standardize case where pass just a string
-#             singleton=True
-#             prompts = [prompts]
-#         else:
-#             singleton=False
+    #     if not isinstance(prompts, list):
+    #         # standardize case where pass just a string
+    #         singleton=True
+    #         prompts = [prompts]
+    #     else:
+    #         singleton=False
                        
-#         if should_format_prompt:
-#             formatted_prompts = []
-#             for prompt in prompts:
-#                 formatted_prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
-#                 formatted_prompts.append(formatted_prompt)
-#             prompts = formatted_prompts
-#         model_inputs = self.tokenizer(prompts, return_tensors='pt', padding=True).to(self.device)
+    #     if should_format_prompt:
+    #         formatted_prompts = []
+    #         for prompt in prompts:
+    #             formatted_prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
+    #             formatted_prompts.append(formatted_prompt)
+    #         prompts = formatted_prompts
+    #     model_inputs = self.tokenizer(prompts, return_tensors='pt', padding=True).to(self.device)
         
-#         with torch.no_grad():
-#             output = self.model.generate(**model_inputs, **kwargs)
+    #     with torch.no_grad():
+    #         output = self.model.generate(**model_inputs, **kwargs)
         
-#         # compute some useful idxs
-#         start_gen_idx = model_inputs.input_ids.shape[1]
-#         end_prompt_mask_idxs = _find_start_indices_after_mask(model_inputs['attention_mask'])
+    #     # compute some useful idxs
+    #     start_gen_idx = model_inputs.input_ids.shape[1]
+    #     end_prompt_mask_idxs = _find_start_indices_after_mask(model_inputs['attention_mask'])
                                                        
-#         if gen_only:
-#             sequences = output.sequences[:, start_gen_idx:]
-#             hiddens = output.hidden_states[1:]
-#         else:
-#             sequences = output.sequences
-#             hiddens = output.hidden_states
+    #     if gen_only:
+    #         sequences = output.sequences[:, start_gen_idx:]
+    #         hiddens = output.hidden_states[1:]
+    #     else:
+    #         sequences = output.sequences
+    #         hiddens = output.hidden_states
 
-#         output_texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-#         # import pdb; pdb.set_trace()
+    #     output_texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    #     # import pdb; pdb.set_trace()
             
-#         if return_projections:
-#             unpacked_hiddens = _unpack_batched_hiddens(hiddens)
-#             all_projs_list = []
-#             for i in range(len(unpacked_hiddens)):
-#                 h = unpacked_hiddens[i]
-#                 all_projs = self.get_projections(h)
-#                 # realign with ntokens bc batching
-#                 ntokens = len(self.tokenizer.tokenize(output_texts[i]))
-#                 if gen_only:
-#                     # just take actually generated tokens in the output
-#                     all_projs = all_projs[:, :ntokens]
-#                 else:
-#                     # take the non-masked prompt + the actually generated tokens
-#                     # a =  all_projs[:, end_prompt_mask_idxs[i]:start_gen_idx-1]
-#                     a =  all_projs[:, end_prompt_mask_idxs[i]:start_gen_idx]
-#                     b = all_projs[:, start_gen_idx:ntokens+start_gen_idx]
-#                     import pdb; pdb.set_trace()
-#                     print(a.shape)
-#                     print(b.shape)
-#                     all_projs = torch.cat((a, b), dim=1)
-#                 all_projs_list.append(all_projs)
+    #     if return_projections:
+    #         unpacked_hiddens = _unpack_batched_hiddens(hiddens)
+    #         all_projs_list = []
+    #         for i in range(len(unpacked_hiddens)):
+    #             h = unpacked_hiddens[i]
+    #             all_projs = self.get_projections(h)
+    #             # realign with ntokens bc batching
+    #             ntokens = len(self.tokenizer.tokenize(output_texts[i]))
+    #             if gen_only:
+    #                 # just take actually generated tokens in the output
+    #                 all_projs = all_projs[:, :ntokens]
+    #             else:
+    #                 # take the non-masked prompt + the actually generated tokens
+    #                 # a =  all_projs[:, end_prompt_mask_idxs[i]:start_gen_idx-1]
+    #                 a =  all_projs[:, end_prompt_mask_idxs[i]:start_gen_idx]
+    #                 b = all_projs[:, start_gen_idx:ntokens+start_gen_idx]
+    #                 import pdb; pdb.set_trace()
+    #                 print(a.shape)
+    #                 print(b.shape)
+    #                 all_projs = torch.cat((a, b), dim=1)
+    #             all_projs_list.append(all_projs)
 
-#         if singleton:
-#             output_texts = output_texts[0]
-#             output_projs = all_projs_list[0]
-#         else:
-#             output_texts = output_texts
-#             output_projs = all_projs_list
+    #     if singleton:
+    #         output_texts = output_texts[0]
+    #         output_projs = all_projs_list[0]
+    #     else:
+    #         output_texts = output_texts
+    #         output_projs = all_projs_list
             
-#         if return_projections:
-#             return {'text': output_texts, 'projections': output_projs, 'raw_hiddens': hiddens}
-#         else:
-#             return {'text': output_texts}
+    #     if return_projections:
+    #         return {'text': output_texts, 'projections': output_projs, 'raw_hiddens': hiddens}
+    #     else:
+    #         return {'text': output_texts}
 
 
     def generate(self, prompts, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
@@ -143,20 +143,34 @@ class Detector:
         If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
         """
         
-        def _get_start_end_idxs(tensor_data):
+        # def _get_start_end_idxs(tensor_data):
+        #     first_non_zero_indices = []
+        #     last_non_zero_indices = []
+        #     for data in tensor_data:
+        #         print(data)
+        #         data_np = data.cpu().numpy()
+        #         first_non_zero_idx = (data_np != 0).argmax()
+        #         first_non_zero_indices.append(first_non_zero_idx)
+        #         reversed_data = data_np[::-1]
+        #         last_non_zero_idx = len(data_np) - (reversed_data != 0).argmax()
+        #         last_non_zero_indices.append(last_non_zero_idx)
+        #     return first_non_zero_indices, last_non_zero_indices
+
+        def _get_start_end_idxs(tensor_data, gen_pad_id):
             first_non_zero_indices = []
-            last_non_zero_indices = []
+            first_eos_indices = []
             for data in tensor_data:
                 data_np = data.cpu().numpy()
                 first_non_zero_idx = (data_np != 0).argmax()
                 first_non_zero_indices.append(first_non_zero_idx)
                 reversed_data = data_np[::-1]
-                last_non_zero_idx = len(data_np) - (reversed_data != 0).argmax()
-                last_non_zero_indices.append(last_non_zero_idx)
-            return first_non_zero_indices, last_non_zero_indices
+                first_eos_idx = len(data_np) - (reversed_data != gen_pad_id).argmax()
+                first_eos_indices.append(first_eos_idx)
+            return first_non_zero_indices, first_eos_indices
         
         kwargs['return_dict_in_generate'] = True
         kwargs['output_hidden_states'] = True
+        kwargs['pad_token_id'] = self.tokenizer.eos_token_id
 
         # standardize single prompt case
         if not isinstance(prompts, list):
@@ -179,8 +193,10 @@ class Detector:
             output = self.model.generate(**model_inputs, **kwargs)
                         
         # get the texts
-        # decoded_texts = self.tokenizer.batch_decode(output.sequences)
-            
+        start_gen_idx = model_inputs.input_ids.shape[1]
+        sequences = output.sequences[:, start_gen_idx:] if gen_only else output.sequences
+        output_texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+
         # get the projections
         hiddens = output.hidden_states
         unpacked_hiddens = _unpack_batched_hiddens(hiddens)
@@ -191,31 +207,27 @@ class Detector:
             all_projs.append(projs)
                 
         # prepare outputs
-        output_texts = []
+        output_tokens = []
         output_projs = []
-        start_prompt_idxs, end_gen_idxs = _get_start_end_idxs(output.sequences)
-        start_gen_idx = model_inputs.input_ids.shape[1]
+        start_prompt_idxs, end_gen_idxs = _get_start_end_idxs(output.sequences, gen_pad_id=kwargs['pad_token_id'])
         for i in range(len(prompts)):
             token_seq = self.tokenizer.convert_ids_to_tokens(output['sequences'][i])
-            print(token_seq)
             if gen_only:
-                output_texts.append(token_seq[i][start_gen_idx:end_gen_idxs[i]])
+                output_tokens.append(token_seq[start_gen_idx:end_gen_idxs[i]])
                 output_projs.append(all_projs[i][:, start_gen_idx:end_gen_idxs[i]])
             else:
-                output_texts.append(token_seq[i][start_prompt_idxs[i]:end_gen_idxs[i]])
-                output_projs.append(all_projs[i][:, start_prompt_idxs[i]:end_gen_idxs[i]])                
+                output_tokens.append(token_seq[start_prompt_idxs[i]:end_gen_idxs[i]])
+                output_projs.append(all_projs[i][:, start_prompt_idxs[i]:end_gen_idxs[i]]) 
                 
+        # print(output_texts)
+        
         if singleton:
-            output_texts = output_texts[0]
+            output_texts = output_texts[0]            
+            output_tokens = output_tokens[0]
             output_projs = output_projs[0]
-        else:
-            output_texts = output_texts
-            output_projs = output_projs
             
-        if return_projections:
-            return {'text': output_texts, 'projections': output_projs}
-        else:
-            return {'text': output_texts}
+        return {'text': output_texts, 'projections': output_projs, 'tokens': output_tokens}
+
         
     
     def get_projections(self, hiddens=None, input_text=None):
