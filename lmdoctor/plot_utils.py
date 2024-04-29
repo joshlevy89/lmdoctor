@@ -42,15 +42,23 @@ def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, satura
 
 
 def plot_scores_per_token(
-    readings, tokens, lastn_tokens_to_plot=None, detection_method=None, saturate_at=1, figsize=None, aspect=None):
+    readings, tokens, lastn_tokens_to_plot=None, detection_method=None, saturate_at=1, figsize=None, aspect=None, token_range=None):
     """
     Scores (e.g. lie detection scores) per token.
     """
     plot_tokens = None
+
+    if lastn_tokens_to_plot is not None and token_range is not None:
+        raise RuntimeError('Cannot set both lastn_tokens_to_plot and token_range simultaneously.')
+    
     if lastn_tokens_to_plot:
         plot_data = readings[:, -lastn_tokens_to_plot:]
         if tokens:
             plot_tokens = tokens[-lastn_tokens_to_plot:]
+    elif token_range:
+        plot_data = readings[:, token_range[0]:token_range[1]]
+        if tokens:
+            plot_tokens = tokens[token_range[0]:token_range[1]]
     else:
         plot_data = readings
         if tokens:
