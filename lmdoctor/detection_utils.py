@@ -101,7 +101,7 @@ class Detector:
             output_tokens = output_tokens[0]
             output_projs = output_projs[0]
             
-        return {'text': output_texts, 'projections': output_projs, 'tokens': output_tokens}
+        return {'text': output_texts, 'projections': output_projs, 'tokens': output_tokens, 'raw_output': output}
 
         
     
