@@ -110,7 +110,7 @@ def plot_projection_heatmap(all_projs, tokens, lastn_tokens_to_plot=None, satura
 def plot_scores_per_token(
     readings, tokens, detection_method=None, saturate_at=1,
     lastn_tokens_to_plot=None, token_ranges=None, auto_ranges_n=None,
-    figsize=None, aspect=None, tickangle=0, vertical_spacing=.1
+    figsize=None, aspect=None, tickangle=-45, vertical_spacing=.1
 ):
     """
     Scores (e.g. lie detection scores) per token.
@@ -174,6 +174,12 @@ def plot_scores_per_token(
             autosize=False,
             width=figsize[0], 
             height=figsize[1]  
+        )
+    else:
+        fig.update_layout(
+            autosize=False,
+            width=1000, 
+            height=200+150*(rows-1)
         )
 
     fig.show()
