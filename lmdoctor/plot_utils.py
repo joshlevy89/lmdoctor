@@ -115,8 +115,8 @@ def plot_scores_per_token(
     """
     Scores (e.g. lie detection scores) per token.
     """
+    # Choose what to plot
     num_not_none = int(lastn_tokens_to_plot is not None) + int(token_ranges is not None) + int(auto_ranges_n is not None)
-
     if num_not_none > 1:
         raise RuntimeError('Choose one of lastn_tokens_to_plot, token_ranges, and auto_ranges.')
     elif num_not_none == 0:
@@ -127,9 +127,22 @@ def plot_scores_per_token(
         n = auto_ranges_n
         token_ranges = [(i, i+n) for i in range(0, len(readings[0]), n)]
 
+    # Get color range
+    if detection_method == 'classifier':
+        zmin, zmax = 0, 1
+    else:
+        if saturate_at is not None:
+            if saturate_at == -1:
+                # set the max and min based on largest value in data
+                absmax = np.max(np.abs(readings[0]))
+                zmin, zmax = -absmax, absmax
+            else:
+                zmin, zmax = -saturate_at, saturate_at
+
     rows = len(token_ranges)
     fig = make_subplots(rows=rows, cols=1, shared_xaxes=False, vertical_spacing=vertical_spacing)
-    tokens_plus_idx = [f"{token}({idx})" for idx, token in enumerate(tokens)]
+    if tokens:
+        tokens_plus_idx = [f"{token}({idx})" for idx, token in enumerate(tokens)]
 
     for i, tr in enumerate(token_ranges):
         plot_tokens = None
@@ -142,21 +155,11 @@ def plot_scores_per_token(
                 z=plot_data, 
                 x=plot_tokens,
                 colorscale='RdYlGn',  # Using the RdYlGn color scale
-                # coloraxis="coloraxis1"
+                zmin=zmin,
+                zmax=zmax
             ),
             row=i+1, col=1
         )
-    
-    if detection_method == 'classifier':
-        fig.update_coloraxes(cmin=0, cmax=1)
-    else:
-        if saturate_at is not None:
-            if saturate_at == -1:
-                # set the max and min based on largest value in data
-                absmax = np.max(np.abs(plot_data))
-                fig.update_coloraxes(cmin=-absmax, cmax=absmax)
-            else:
-                fig.update_coloraxes(cmin=-saturate_at, cmax=saturate_at)
 
     if tokens:
         fig.update_xaxes(
@@ -166,21 +169,26 @@ def plot_scores_per_token(
     fig.update_yaxes(
         showticklabels=False
     )
-
-    # fig.update_layout(coloraxis_showscale=False)
-
-    if figsize:
-        fig.update_layout(
-            autosize=False,
-            width=figsize[0], 
-            height=figsize[1]  
-        )
-    else:
-        fig.update_layout(
-            autosize=False,
-            width=1000, 
-            height=200+150*(rows-1)
-        )
+    
+    fig.update_layout(
+        autosize=False,
+        width=1000, 
+        height=200+150*(rows-1) 
+    )
+    
+    
+    # if figsize:
+    #     fig.update_layout(
+    #         autosize=False,
+    #         width=figsize[0], 
+    #         height=figsize[1]  
+    #     )
+    # else:
+    #     fig.update_layout(
+    #         autosize=False,
+    #         width=1000, 
+    #         height=200+150*(rows-1)
+    #     )
 
     fig.show()
 
