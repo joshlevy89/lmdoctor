@@ -48,13 +48,15 @@ class Extractor:
         self.statement_pairs = None
         self.train_acts = None
         
-    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32):
+    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32, shuffle_functional_pairs=False):
         """
         n_train_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
         """        
         self.statement_pairs = prepare_statement_pairs(
             self.extraction_target, self.extraction_method, self.tokenizer, 
-            self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs, **self.kwargs)
+            self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs,
+            shuffle_functional_pairs=shuffle_functional_pairs,
+            **self.kwargs)
         self.train_acts = get_activations_for_paired_statements(
             self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)   
         self.direction_info = get_directions(self.train_acts, self.device, self.probe_type)
@@ -114,7 +116,7 @@ def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
 
 def prepare_statement_pairs(
     extraction_target, extraction_method, tokenizer, user_tag, assistant_tag, 
-    n_train_pairs=None, n_dev_pairs=None, n_test_pairs=None, **kwargs):
+    n_train_pairs=None, n_dev_pairs=None, n_test_pairs=None, shuffle_functional_pairs=False, **kwargs):
             
     extraction_fn, extraction_method = get_extraction_function(extraction_target, extraction_method, **kwargs)
     result = extraction_fn()
@@ -124,7 +126,7 @@ def prepare_statement_pairs(
     
     if extraction_method == 'functional':
         statement_pairs = prepare_functional_pairs(
-            data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+            data, prompt_maker, tokenizer, user_tag, assistant_tag, shuffle_functional_pairs=shuffle_functional_pairs, **kwargs)
     elif extraction_method == 'conceptual':
         statement_pairs = prepare_conceptual_pairs(
             data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
@@ -141,13 +143,16 @@ def prepare_statement_pairs(
     return d
     
 
-def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_trim_tokens=5, stop_token=None):
+def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_trim_tokens=5, stop_token=None,
+                            shuffle_functional_pairs=False):
     """
     Pair statements by expanding positive and negative version of a prompt (e.g. tell me a fact about..., 
     tell me a lie about...), one token a token at a time.
     """
     statement_pairs = []
     statements = data['statement'].values.tolist()
+    if shuffle_functional_pairs:
+        random.shuffle(statements)
     for statement in statements:
         if stop_token:
             statement = statement.split(stop_token)[0]    
