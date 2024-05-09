@@ -193,10 +193,27 @@ def plot_scores_per_token(
     fig.show()
 
 
-def plot_projs_on_numberline(projs_1, projs_0):
+def plot_projs_on_numberline(projs_1, projs_0, xlims=None, remove_outliers=True):
     """
     Plot projections on numberline with a bit of jitter
     """
+
+    def reject_outliers(data, m = 10.):
+        d = np.abs(data - np.median(data))
+        mdev = np.median(d)
+        s = d/mdev if mdev else np.zeros(len(d))
+        num_removed=sum(s>=m)
+        return data[s<m], num_removed
+                
+    # remove any outliers
+    if remove_outliers:
+        projs_1, nremoved1 = reject_outliers(projs_1)
+        if nremoved1 > 0:
+            print(f'Removing {nremoved1} outliers from first list.')
+        projs_0, nremoved0 = reject_outliers(projs_0)
+        if nremoved0 > 0:
+            print(f'Removing {nremoved0} outliers from second list.')
+    
     df = pd.DataFrame({
         'Value': np.concatenate([projs_1, projs_0]),
         'label': ['1'] * len(projs_1) + ['0'] * len(projs_0)
@@ -204,7 +221,7 @@ def plot_projs_on_numberline(projs_1, projs_0):
     df['y'] = np.random.uniform(-1, 1, df.shape[0])        
     fig = px.scatter(df, x='Value', y='y', color='label')
     
-    fig.update_xaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False, range=xlims)
     fig.update_yaxes(showgrid=False, 
                      zeroline=True, zerolinecolor='black', zerolinewidth=3,
                      showticklabels=False)

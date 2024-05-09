@@ -31,9 +31,6 @@ class Extractor:
         - n_trim_tokens (int): The number of tokens to trim from the end of statements for functional extraction. Defaults to 5.
         - shuffle (bool): Whether to shuffle statements for conceptual extraction. Defaults to True.
         """
-
-        if extraction_target is None:
-            raise ValueError(f"Must specify extraction_target. Must be one of {list(get_extraction_target_map())}")
         
         self.model = model
         self.tokenizer = tokenizer
@@ -48,15 +45,23 @@ class Extractor:
         self.statement_pairs = None
         self.train_acts = None
         
-    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32, shuffle_functional_pairs=False):
+    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32, shuffle_functional_pairs=False,
+               statement_pairs=None):
         """
         n_train_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
         """        
-        self.statement_pairs = prepare_statement_pairs(
-            self.extraction_target, self.extraction_method, self.tokenizer, 
-            self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs,
-            shuffle_functional_pairs=shuffle_functional_pairs,
-            **self.kwargs)
+        if self.extraction_target is None and statement_pairs is None:
+            raise ValueError(f"""Must specify extraction_target if not passing statement_pairs.
+            Must be one of {list(get_extraction_target_map())}""")
+
+        if statement_pairs:
+            self.statement_pairs = statement_pairs
+        else:
+            self.statement_pairs = prepare_statement_pairs(
+                self.extraction_target, self.extraction_method, self.tokenizer, 
+                self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs,
+                shuffle_functional_pairs=shuffle_functional_pairs,
+                **self.kwargs)
         self.train_acts = get_activations_for_paired_statements(
             self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)   
         self.direction_info = get_directions(self.train_acts, self.device, self.probe_type)
