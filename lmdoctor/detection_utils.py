@@ -133,11 +133,13 @@ class Detector:
             X = proj_pairs.detach().cpu().numpy()
             y = np.array([1] * n_pairs + [0] * n_pairs)
             return X, y
-        
-        dev_statement_pairs = self.extractor.statement_pairs['dev']
-        act_pairs = get_activations_for_paired_statements(
-            dev_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
-        X, y = _create_projection_dataset(act_pairs, self.direction_info, len(dev_statement_pairs))
+
+        if not hasattr(self, 'dev_acts'):
+            dev_statement_pairs = self.extractor.statement_pairs['dev']
+            dev_acts = get_activations_for_paired_statements(
+                dev_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+            self.dev_acts = dev_acts
+        X, y = _create_projection_dataset(self.dev_acts, self.direction_info, len(dev_statement_pairs))
 
         # train
         clf = LogisticRegression()
@@ -146,10 +148,12 @@ class Detector:
         logger.info(f'Classifier acc on dev set: {acc}')
 
         if run_test:
-            test_statement_pairs = self.extractor.statement_pairs['test']
-            test_act_pairs = get_activations_for_paired_statements(
-                test_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
-            X_test, y_test = _create_projection_dataset(test_act_pairs, self.direction_info, len(test_statement_pairs))
+            if not hasattr(self, 'test_acts'):
+                test_statement_pairs = self.extractor.statement_pairs['test']
+                test_acts = get_activations_for_paired_statements(
+                    test_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+                self.test_acts = test_acts
+            X_test, y_test = _create_projection_dataset(self.test_acts, self.direction_info, len(test_statement_pairs))
             acc = clf.score(X_test, y_test)
             logger.info(f'Classifier acc on test set: {acc}')
 

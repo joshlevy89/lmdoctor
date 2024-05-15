@@ -15,6 +15,7 @@ import torch
 from sklearn.decomposition import PCA
 import torch.nn.functional as F
 import random
+from tqdm import tqdm
 from .utils import setup_logger
 logger = setup_logger()
 
@@ -192,7 +193,8 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
 
 def get_activations_for_paired_statements(statement_pairs, model, tokenizer, batch_size, device, read_token=-1):
     layer_to_act_pairs = defaultdict(list)
-    for i in range(0, len(statement_pairs), batch_size):
+    print('Getting model activations...')
+    for i in tqdm(range(0, len(statement_pairs), batch_size)):
         pairs = statement_pairs[i:i+batch_size]
         statements = pairs.reshape(-1)
         model_inputs = tokenizer(list(statements), padding=True, return_tensors='pt').to(device)
