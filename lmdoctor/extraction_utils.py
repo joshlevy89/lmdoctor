@@ -64,7 +64,8 @@ class Extractor:
                 shuffle_functional_pairs=shuffle_functional_pairs,
                 **self.kwargs)
         self.train_acts = get_activations_for_paired_statements(
-            self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)   
+            self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)
+        logger.info('Finding directions...')
         self.direction_info = get_directions(self.train_acts, self.device, self.probe_type)
     
 
@@ -193,7 +194,7 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
 
 def get_activations_for_paired_statements(statement_pairs, model, tokenizer, batch_size, device, read_token=-1):
     layer_to_act_pairs = defaultdict(list)
-    print('Getting model activations...')
+    logger.info('Getting activations...')
     for i in tqdm(range(0, len(statement_pairs), batch_size)):
         pairs = statement_pairs[i:i+batch_size]
         statements = pairs.reshape(-1)
