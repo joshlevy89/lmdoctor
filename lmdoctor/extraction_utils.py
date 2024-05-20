@@ -212,14 +212,30 @@ def get_activations_for_paired_statements(statement_pairs, model, tokenizer, bat
 
 def get_directions(train_acts, device, probe_type):
     if probe_type == 'pca':
-        return probe_pca(train_acts, device)
+        direction_info = probe_pca(train_acts, device)
     elif probe_type == 'logreg':
-        return probe_logreg(train_acts, device)
+        direction_info = probe_logreg(train_acts, device)
     elif probe_type == 'massmean':
-        return probe_massmean(train_acts, device)
+        direction_info = probe_massmean(train_acts, device)
     else:
         probe_types = ['pca', 'logreg', 'massmean']
         raise ValueError(f'probe_type must be one of {probe_types} but is {probe_type}.')
+
+    # drop any layers with nan in their direction
+    layers_to_drop = []
+    # find which layers to drop if any
+    directions = direction_info['directions']
+    for layer in directions:
+        if torch.any(torch.isnan(directions[layer])).item():
+            layers_to_drop.append(layer)
+    # delete them from each key in direction_info
+    for layer in layers_to_drop:
+        logger.warning(f'Discarding layer {layer} because its direction contains nans.')
+        for key in direction_info:
+            del direction_info[key][layer]
+
+    return direction_info
+    
 
         
 # def get_accs_for_pairs(test_acts, direction_info):

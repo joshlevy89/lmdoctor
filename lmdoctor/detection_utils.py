@@ -135,11 +135,11 @@ class Detector:
             return X, y
 
         if not hasattr(self, 'dev_acts'):
-            dev_statement_pairs = self.extractor.statement_pairs['dev']
             dev_acts = get_activations_for_paired_statements(
-                dev_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+                self.extractor.statement_pairs['dev'], self.model, self.tokenizer, batch_size, self.device, read_token=-1)
             self.dev_acts = dev_acts
-        X, y = _create_projection_dataset(self.dev_acts, self.direction_info, len(dev_statement_pairs))
+        X, y = _create_projection_dataset(
+            self.dev_acts, self.direction_info, len(self.extractor.statement_pairs['dev']))
 
         # train
         clf = LogisticRegression()
@@ -149,11 +149,11 @@ class Detector:
 
         if run_test:
             if not hasattr(self, 'test_acts'):
-                test_statement_pairs = self.extractor.statement_pairs['test']
                 test_acts = get_activations_for_paired_statements(
-                    test_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+                    self.extractor.statement_pairs['test'], self.model, self.tokenizer, batch_size, self.device, read_token=-1)
                 self.test_acts = test_acts
-            X_test, y_test = _create_projection_dataset(self.test_acts, self.direction_info, len(test_statement_pairs))
+            X_test, y_test = _create_projection_dataset(
+                self.test_acts, self.direction_info, len(self.extractor.statement_pairs['test']))
             acc = clf.score(X_test, y_test)
             logger.info(f'Classifier acc on test set: {acc}')
 
@@ -242,8 +242,12 @@ class Detector:
 
     
 def auto_compute_saturation(extractor, percentile=25):
+    """Get the percentile based on distribution of projections of the second label (e.g. the lie in fact/lie pairs)
+    Could also base it on both items in pairs, but using this for now."""
     proj_pairs = act_pairs_to_projs(extractor.train_acts, extractor.direction_info, len(extractor.statement_pairs['train']))
-    perc = np.percentile(proj_pairs[1, :, :].view(-1), percentile)
+    vals = proj_pairs[1, :, :].view(-1)
+    # vals = vals[~torch.isnan(vals)] # since directions with nans are discarded, should not need this filter
+    perc = np.percentile(vals, percentile)
     saturate_at = abs(round(perc, 4))
     return saturate_at
     
@@ -262,7 +266,7 @@ def layeracts_to_projs(layer_to_acts, direction_info):
     mean_diffs = direction_info.get('mean_diffs', {})
     
     all_projs = []
-    for layer in layer_to_acts:
+    for layer in directions:
         projs = do_projections(layer_to_acts[layer], directions[layer], 
                                mean_diff=mean_diffs.get(layer))
         all_projs.append(projs)
@@ -274,9 +278,9 @@ def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=T
     directions = direction_info['directions']
     mean_diffs = direction_info.get('mean_diffs', {})
 
-    num_layers = len(act_pairs)
+    num_layers = len(directions.keys())
     proj_pairs = torch.zeros((2, n_pairs, num_layers))
-    for i, layer in enumerate(act_pairs):
+    for i, layer in enumerate(directions):
         pos_projs = do_projections(act_pairs[layer][:, 0, :], directions[layer], 
                                    mean_diff=mean_diffs.get(layer), normalize_direction=normalize_direction)
         neg_projs = do_projections(act_pairs[layer][:, 1, :], directions[layer], 
