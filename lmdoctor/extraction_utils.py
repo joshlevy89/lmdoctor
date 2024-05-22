@@ -67,6 +67,7 @@ class Extractor:
             self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)
         logger.info('Finding directions...')
         self.direction_info = get_directions(self.train_acts, self.device, self.probe_type)
+        logger.info('Done.')
     
 
 def get_extraction_function(target, extraction_method=None, **kwargs):
