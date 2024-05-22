@@ -24,36 +24,86 @@ class Detector:
         self.extractor = extractor
         self.auto_saturate_at = None # for heatmap
         self.layer_aggregation_clf = None # aggregation for detection
-    
-    
-    def generate(self, prompt, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
+
+
+    def generate(self, prompts, gen_only=True, return_projections=True, should_format_prompt=True, **kwargs):
         """
         If gen only, get projections/text for newly generated text only (i.e. exclude prompt)
         """
+
+        def _get_start_end_idxs(tensor_data, gen_pad_id):
+            first_non_zero_indices = []
+            first_eos_indices = []
+            for data in tensor_data:
+                data_np = data.cpu().numpy()
+                first_non_zero_idx = (data_np != 0).argmax()
+                first_non_zero_indices.append(first_non_zero_idx)
+                reversed_data = data_np[::-1]
+                first_eos_idx = len(data_np) - (reversed_data != gen_pad_id).argmax()
+                first_eos_indices.append(first_eos_idx)
+            return first_non_zero_indices, first_eos_indices
+        
         kwargs['return_dict_in_generate'] = True
         kwargs['output_hidden_states'] = True
+        kwargs['pad_token_id'] = self.tokenizer.eos_token_id
 
+        # standardize single prompt case
+        if not isinstance(prompts, list):
+            singleton=True
+            prompts = [prompts]
+        else:
+            singleton=False
+                       
+        # format input
         if should_format_prompt:
-            prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
-        model_inputs = self.tokenizer(prompt, return_tensors='pt').to(self.device)
+            formatted_prompts = []
+            for prompt in prompts:
+                formatted_prompt = format_prompt(prompt, self.user_tag, self.assistant_tag)
+                formatted_prompts.append(formatted_prompt)
+            prompts = formatted_prompts
+        model_inputs = self.tokenizer(prompts, return_tensors='pt', padding=True).to(self.device)
         
+        # run generation
         with torch.no_grad():
             output = self.model.generate(**model_inputs, **kwargs)
+                        
+        # get the texts
+        start_gen_idx = model_inputs.input_ids.shape[1]
+        sequences = output.sequences[:, start_gen_idx:] if gen_only else output.sequences
+        output_texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         
-        if gen_only:
-            sequences = output.sequences[:, model_inputs.input_ids.shape[1]:]
-            hiddens = output.hidden_states[1:]
-        else:
-            sequences = output.sequences
-            hiddens = output.hidden_states
+        # get the projections
+        hiddens = output.hidden_states
+        unpacked_hiddens = _unpack_batched_hiddens(hiddens)
+        all_projs = []
+        for i in range(len(unpacked_hiddens)):
+            h = unpacked_hiddens[i]
+            projs = self.get_projections(h)
+            all_projs.append(projs)
+                
+        # prepare outputs
+        output_tokens = []
+        output_projs = []
+        start_prompt_idxs, end_gen_idxs = _get_start_end_idxs(output.sequences, gen_pad_id=kwargs['pad_token_id'])
+        for i in range(len(prompts)):
+            token_seq = self.tokenizer.convert_ids_to_tokens(output['sequences'][i])
+            if gen_only:
+                output_tokens.append(token_seq[start_gen_idx:end_gen_idxs[i]])
+                output_projs.append(all_projs[i][:, start_gen_idx:end_gen_idxs[i]])
+            else:
+                output_tokens.append(token_seq[start_prompt_idxs[i]:end_gen_idxs[i]])
+                output_projs.append(all_projs[i][:, start_prompt_idxs[i]:end_gen_idxs[i]]) 
+                
+        # print(output_texts)
+        
+        if singleton:
+            output_texts = output_texts[0]            
+            output_tokens = output_tokens[0]
+            output_projs = output_projs[0]
+            
+        return {'text': output_texts, 'projections': output_projs, 'tokens': output_tokens, 'raw_output': output}
 
-        output_text = self.tokenizer.batch_decode(sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-
-        if return_projections:
-            all_projs = self.get_projections(hiddens)
-            return {'text': output_text, 'projections': all_projs}
-        else:
-            return {'text': output_text}
+        
     
     def get_projections(self, hiddens=None, input_text=None):
         """
@@ -83,11 +133,13 @@ class Detector:
             X = proj_pairs.detach().cpu().numpy()
             y = np.array([1] * n_pairs + [0] * n_pairs)
             return X, y
-        
-        dev_statement_pairs = self.extractor.statement_pairs['dev']
-        act_pairs = get_activations_for_paired_statements(
-            dev_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
-        X, y = _create_projection_dataset(act_pairs, self.direction_info, len(dev_statement_pairs))
+
+        if not hasattr(self, 'dev_acts'):
+            dev_acts = get_activations_for_paired_statements(
+                self.extractor.statement_pairs['dev'], self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+            self.dev_acts = dev_acts
+        X, y = _create_projection_dataset(
+            self.dev_acts, self.direction_info, len(self.extractor.statement_pairs['dev']))
 
         # train
         clf = LogisticRegression()
@@ -96,10 +148,12 @@ class Detector:
         logger.info(f'Classifier acc on dev set: {acc}')
 
         if run_test:
-            test_statement_pairs = self.extractor.statement_pairs['test']
-            test_act_pairs = get_activations_for_paired_statements(
-                test_statement_pairs, self.model, self.tokenizer, batch_size, self.device, read_token=-1)
-            X_test, y_test = _create_projection_dataset(test_act_pairs, self.direction_info, len(test_statement_pairs))
+            if not hasattr(self, 'test_acts'):
+                test_acts = get_activations_for_paired_statements(
+                    self.extractor.statement_pairs['test'], self.model, self.tokenizer, batch_size, self.device, read_token=-1)
+                self.test_acts = test_acts
+            X_test, y_test = _create_projection_dataset(
+                self.test_acts, self.direction_info, len(self.extractor.statement_pairs['test']))
             acc = clf.score(X_test, y_test)
             logger.info(f'Classifier acc on test set: {acc}')
 
@@ -188,8 +242,12 @@ class Detector:
 
     
 def auto_compute_saturation(extractor, percentile=25):
+    """Get the percentile based on distribution of projections of the second label (e.g. the lie in fact/lie pairs)
+    Could also base it on both items in pairs, but using this for now."""
     proj_pairs = act_pairs_to_projs(extractor.train_acts, extractor.direction_info, len(extractor.statement_pairs['train']))
-    perc = np.percentile(proj_pairs[1, :, :].view(-1), percentile)
+    vals = proj_pairs[1, :, :].view(-1)
+    # vals = vals[~torch.isnan(vals)] # since directions with nans are discarded, should not need this filter
+    perc = np.percentile(vals, percentile)
     saturate_at = abs(round(perc, 4))
     return saturate_at
     
@@ -208,7 +266,7 @@ def layeracts_to_projs(layer_to_acts, direction_info):
     mean_diffs = direction_info.get('mean_diffs', {})
     
     all_projs = []
-    for layer in layer_to_acts:
+    for layer in directions:
         projs = do_projections(layer_to_acts[layer], directions[layer], 
                                mean_diff=mean_diffs.get(layer))
         all_projs.append(projs)
@@ -220,9 +278,9 @@ def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=T
     directions = direction_info['directions']
     mean_diffs = direction_info.get('mean_diffs', {})
 
-    num_layers = len(act_pairs)
+    num_layers = len(directions.keys())
     proj_pairs = torch.zeros((2, n_pairs, num_layers))
-    for i, layer in enumerate(act_pairs):
+    for i, layer in enumerate(directions):
         pos_projs = do_projections(act_pairs[layer][:, 0, :], directions[layer], 
                                    mean_diff=mean_diffs.get(layer), normalize_direction=normalize_direction)
         neg_projs = do_projections(act_pairs[layer][:, 1, :], directions[layer], 
@@ -231,6 +289,17 @@ def act_pairs_to_projs(act_pairs, direction_info, n_pairs, normalize_direction=T
         proj_pairs[1, :, i] = neg_projs
     return proj_pairs
 
+
+def _unpack_batched_hiddens(hiddens):
+    
+    ntokens, nlayers, batch_size = len(hiddens), len(hiddens[0]), hiddens[0][0].shape[0]
+    unpacked_hiddens = [[] for _ in range(batch_size)]
+    for token in range(ntokens):  
+        for batch_part in range(batch_size):
+            batch_part_data = [hiddens[token][idx][batch_part].unsqueeze(0) for idx in range(nlayers)]
+            unpacked_hiddens[batch_part].append(batch_part_data)
+    return unpacked_hiddens
+    
 
 def _get_layeracts_from_hiddens(hiddens):
     """

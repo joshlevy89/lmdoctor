@@ -9,6 +9,8 @@ Built on 🤗 transformers
 pip package [here](https://pypi.org/project/lmdoctor/)  
 project repo [here](https://github.com/joshlevy89/lmdoctor)
 
+**Disclaimer**: This is an experimental package and may not have sufficient sensitivity/specificity for your use-case. For an example analysis of the characteristics of one honesty detector, see evals/honesty/mistral_eval.ipynb.  
+
 ## Example
 
 ### honesty extraction

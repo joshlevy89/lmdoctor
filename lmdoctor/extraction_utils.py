@@ -15,6 +15,7 @@ import torch
 from sklearn.decomposition import PCA
 import torch.nn.functional as F
 import random
+from tqdm import tqdm
 from .utils import setup_logger
 logger = setup_logger()
 
@@ -31,9 +32,6 @@ class Extractor:
         - n_trim_tokens (int): The number of tokens to trim from the end of statements for functional extraction. Defaults to 5.
         - shuffle (bool): Whether to shuffle statements for conceptual extraction. Defaults to True.
         """
-
-        if extraction_target is None:
-            raise ValueError(f"Must specify extraction_target. Must be one of {list(get_extraction_target_map())}")
         
         self.model = model
         self.tokenizer = tokenizer
@@ -48,16 +46,28 @@ class Extractor:
         self.statement_pairs = None
         self.train_acts = None
         
-    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32):
+    def extract(self, batch_size=8, n_train_pairs=128, n_dev_pairs=64, n_test_pairs=32, shuffle_functional_pairs=False,
+               statement_pairs=None):
         """
         n_train_pairs: how many statement pairs to use to calculate directions. setting to None will use all pairs. 
         """        
-        self.statement_pairs = prepare_statement_pairs(
-            self.extraction_target, self.extraction_method, self.tokenizer, 
-            self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs, **self.kwargs)
+        if self.extraction_target is None and statement_pairs is None:
+            raise ValueError(f"""Must specify extraction_target if not passing statement_pairs.
+            Must be one of {list(get_extraction_target_map())}""")
+
+        if statement_pairs:
+            self.statement_pairs = statement_pairs
+        else:
+            self.statement_pairs = prepare_statement_pairs(
+                self.extraction_target, self.extraction_method, self.tokenizer, 
+                self.user_tag, self.assistant_tag, n_train_pairs, n_dev_pairs, n_test_pairs,
+                shuffle_functional_pairs=shuffle_functional_pairs,
+                **self.kwargs)
         self.train_acts = get_activations_for_paired_statements(
-            self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)   
+            self.statement_pairs['train'], self.model, self.tokenizer, batch_size, device=self.device)
+        logger.info('Finding directions...')
         self.direction_info = get_directions(self.train_acts, self.device, self.probe_type)
+        logger.info('Done.')
     
 
 def get_extraction_function(target, extraction_method=None, **kwargs):
@@ -114,7 +124,7 @@ def get_extraction_target_map(target=None, emotion_type=None, bias_type=None):
 
 def prepare_statement_pairs(
     extraction_target, extraction_method, tokenizer, user_tag, assistant_tag, 
-    n_train_pairs=None, n_dev_pairs=None, n_test_pairs=None, **kwargs):
+    n_train_pairs=None, n_dev_pairs=None, n_test_pairs=None, shuffle_functional_pairs=False, **kwargs):
             
     extraction_fn, extraction_method = get_extraction_function(extraction_target, extraction_method, **kwargs)
     result = extraction_fn()
@@ -124,7 +134,7 @@ def prepare_statement_pairs(
     
     if extraction_method == 'functional':
         statement_pairs = prepare_functional_pairs(
-            data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
+            data, prompt_maker, tokenizer, user_tag, assistant_tag, shuffle_functional_pairs=shuffle_functional_pairs, **kwargs)
     elif extraction_method == 'conceptual':
         statement_pairs = prepare_conceptual_pairs(
             data, prompt_maker, tokenizer, user_tag, assistant_tag, **kwargs)
@@ -141,13 +151,16 @@ def prepare_statement_pairs(
     return d
     
 
-def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_trim_tokens=5, stop_token=None):
+def prepare_functional_pairs(data, _prompt_maker, tokenizer, user_tag, assistant_tag, n_trim_tokens=5, stop_token=None,
+                            shuffle_functional_pairs=False):
     """
     Pair statements by expanding positive and negative version of a prompt (e.g. tell me a fact about..., 
     tell me a lie about...), one token a token at a time.
     """
     statement_pairs = []
     statements = data['statement'].values.tolist()
+    if shuffle_functional_pairs:
+        random.shuffle(statements)
     for statement in statements:
         if stop_token:
             statement = statement.split(stop_token)[0]    
@@ -182,7 +195,8 @@ def prepare_conceptual_pairs(data, _prompt_maker, tokenizer, user_tag, assistant
 
 def get_activations_for_paired_statements(statement_pairs, model, tokenizer, batch_size, device, read_token=-1):
     layer_to_act_pairs = defaultdict(list)
-    for i in range(0, len(statement_pairs), batch_size):
+    logger.info('Getting activations...')
+    for i in tqdm(range(0, len(statement_pairs), batch_size)):
         pairs = statement_pairs[i:i+batch_size]
         statements = pairs.reshape(-1)
         model_inputs = tokenizer(list(statements), padding=True, return_tensors='pt').to(device)
@@ -200,14 +214,30 @@ def get_activations_for_paired_statements(statement_pairs, model, tokenizer, bat
 
 def get_directions(train_acts, device, probe_type):
     if probe_type == 'pca':
-        return probe_pca(train_acts, device)
+        direction_info = probe_pca(train_acts, device)
     elif probe_type == 'logreg':
-        return probe_logreg(train_acts, device)
+        direction_info = probe_logreg(train_acts, device)
     elif probe_type == 'massmean':
-        return probe_massmean(train_acts, device)
+        direction_info = probe_massmean(train_acts, device)
     else:
         probe_types = ['pca', 'logreg', 'massmean']
         raise ValueError(f'probe_type must be one of {probe_types} but is {probe_type}.')
+
+    # drop any layers with nan in their direction
+    layers_to_drop = []
+    # find which layers to drop if any
+    directions = direction_info['directions']
+    for layer in directions:
+        if torch.any(torch.isnan(directions[layer])).item():
+            layers_to_drop.append(layer)
+    # delete them from each key in direction_info
+    for layer in layers_to_drop:
+        logger.warning(f'Discarding layer {layer} because its direction contains nans.')
+        for key in direction_info:
+            del direction_info[key][layer]
+
+    return direction_info
+    
 
         
 # def get_accs_for_pairs(test_acts, direction_info):

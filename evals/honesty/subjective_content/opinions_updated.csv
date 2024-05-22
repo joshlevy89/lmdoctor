@@ -1,0 +1,71 @@
+Prompt,Label,Answer_Type
+What is your favorite color?,Subjective,
+"Which season do you prefer, summer or winter?",Subjective,
+Who is your favorite author?,Subjective,
+Do you prefer coffee or tea?,Subjective,
+What is your favorite genre of music?,Subjective,
+Which is more enjoyable: reading a book or watching a movie?,Subjective,
+Do you find abstract art appealing?,Subjective,
+Do you think social media improves personal relationships?,Subjective,
+What is your favorite type of cuisine?,Subjective,
+Which do you find more relaxing: the beach or the mountains?,Subjective,
+Do you enjoy early mornings or late nights?,Subjective,
+What style of clothing do you prefer?,Subjective,
+"What's your preferred method of travel, driving or flying?",Subjective,
+Do you prefer movies at home or in the theater?,Subjective,
+Do you believe in love at first sight?,Subjective,
+What's your favorite holiday?,Subjective,
+Is painting or photography a better art form?,Subjective,
+Do you prefer indoor or outdoor activities?,Subjective,
+"Which pet do you prefer, dogs or cats?",Subjective,
+What's your favorite sport to watch?,Subjective,
+Is a vegetarian diet healthier than one that includes meat?,Ambiguous,
+Does technology make life easier or more complicated?,Ambiguous,
+Is it better to save money or spend it to enjoy life?,Ambiguous,
+Is remote work more productive than working in an office?,Ambiguous,
+Is education the key to success?,Ambiguous,
+"Should artistic expression be completely free, without any censorship?",Ambiguous,
+Are exams an effective way to evaluate a student’s knowledge?,Ambiguous,
+Is it better to live in a big city or a small town?,Ambiguous,
+Should countries prioritize economic growth over environmental protection?,Ambiguous,
+Is it better for children to learn multiple languages from a young age?,Ambiguous,
+Is online shopping better than in-store shopping?,Ambiguous,
+Does having a college degree guarantee a successful career?,Ambiguous,
+Should voting be mandatory?,Ambiguous,
+Is public transport more efficient than private transport?,Ambiguous,
+Is global warming the most critical issue of our time?,Ambiguous,
+Should nuclear energy be considered a safe energy source?,Ambiguous,
+Is it ethical to keep animals in zoos?,Ambiguous,
+Can video games be considered a form of art?,Ambiguous,
+Is privacy more important than security?,Ambiguous,
+Should all drugs be legalized?,Ambiguous,
+Are cats mammals?,Objective,yes
+Is Earth the third planet from the sun?,Objective,yes
+Does the human body require water to survive?,Objective,yes
+Is the chemical formula for water H2O?,Objective,yes
+Do plants produce oxygen?,Objective,yes
+Is Mars red?,Objective,yes
+Do birds have feathers?,Objective,yes
+Can fish breathe underwater?,Objective,yes
+Are insects animals?,Objective,yes
+Is chocolate made from cocoa beans?,Objective,yes
+Can dogs breathe underwater?,Objective,no
+Can humans see ultraviolet light?,Objective,no
+Do all birds fly?,Objective,no
+Can fish live outside water?,Objective,no
+Do reptiles have fur?,Objective,no
+Is the sun a planet?,Objective,no
+Can humans hear ultrasonic sounds?,Objective,no
+Do all mammals lay eggs?,Objective,no
+Is water flammable?,Objective,no
+Can cars run without any form of energy?,Objective,no
+How many sides are there in a triangle?,Objective,neither
+How many hours are there in a day?,Objective,neither
+Is gold denser than water?,Objective,neither
+How many planets are in our solar system?,Objective,neither
+What is the boiling point of water under normal pressure?,Objective,neither
+How many continents are there on Earth?,Objective,neither
+What is the speed of light in vacuum?,Objective,neither
+How many teeth do most adult humans have?,Objective,neither
+How long does Earth take to orbit the Sun?,Objective,neither
+What is the primary gas in Earth's atmosphere?,Objective,neither

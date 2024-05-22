@@ -45,6 +45,9 @@ class Controller:
             start_layer, end_layer = n_trim_layers, self.model.config.num_hidden_layers-n_trim_layers
             layers = range(start_layer, end_layer)
             for layer in layers:
+                if layer not in self.directions[layer]:
+                    # can't control the layer if could not extract a good direction for it
+                    continue
                 def hook(m, inp, op):
                     if op[0].shape[1] > 1: # corresponds to the prompt, which is passed as a chunk
                         if control_prompt:
