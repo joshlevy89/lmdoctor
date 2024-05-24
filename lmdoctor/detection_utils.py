@@ -160,10 +160,7 @@ class Detector:
         self.layer_aggregation_clf = clf
 
 
-    def detect(self, all_projs, aggregation_method=None, layers_to_use=None, use_n_middle_layers=None, **kwargs):
-        
-        if not aggregation_method:
-            raise RuntimeError('Must specify an aggregation method for detect')
+    def detect(self, all_projs, aggregation_method='auto', layers_to_use=None, use_n_middle_layers=None, **kwargs):
         
         if aggregation_method == 'auto':
             if self.layer_aggregation_clf is None:
