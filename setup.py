@@ -16,11 +16,13 @@ setup(
     license='MIT',
     packages=find_packages(),
     include_package_data=True,
+    # versions known to work with auto-gptq
     install_requires=['jupyter',
                       'ipykernel',
-                      'transformers>=4.32.0',
+                      'transformers==4.36.2',
                       'plotly',
-                      'tokenizers>=0.13.3',
+                      'tokenizers==0.15.2',
+                      'peft==0.10.0',
                       'scikit-learn',
                       'pandas'
                       ],

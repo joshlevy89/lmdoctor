@@ -31,7 +31,6 @@ class Controller:
         control_gen/control_prompt: applies control element to generated text and input prompt, respectively. if both
         set to False, no control is applied.
         """
-
         if alpha <= 0:
             raise ValueError(f"alpha must be >0, but is {alpha}")
 
@@ -45,7 +44,7 @@ class Controller:
             start_layer, end_layer = n_trim_layers, self.model.config.num_hidden_layers-n_trim_layers
             layers = range(start_layer, end_layer)
             for layer in layers:
-                if layer not in self.directions[layer]:
+                if layer not in self.directions:
                     # can't control the layer if could not extract a good direction for it
                     continue
                 def hook(m, inp, op):
